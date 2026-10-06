@@ -65,18 +65,18 @@ Buka `http://localhost:8443` (atau sesuai `$PORT`). Hot reload aktif.
 docker compose up --build -d
 ```
 
-Buka `http://localhost:8080`.
+Buka `http://localhost:8099`.
 
 ### Via Docker CLI
 
 ```bash
 docker build -t daily-apps .
-docker run -d -p 8080:80 --name daily-apps daily-apps
+docker run -d -p 8099:80 --name daily-apps daily-apps
 ```
 
 Image memakai multi-stage build: `node:22-alpine` untuk build → `nginx:alpine` untuk serve `dist/` dengan fallback SPA (`try_files $uri /index.html`).
 
-> Catatan: `vite.config.ts` mengimpor `./.figma/make/site.json` yang hanya ada di environment Figma Make. Dockerfile otomatis memakai `make/site.json` sebagai fallback bila file tersebut tidak ada, jadi `docker build` tetap berhasil di luar Figma Make. Jika port 8080 sudah dipakai, ubah mapping port (mis. `"8099:80"`).
+> Catatan: `vite.config.ts` mengimpor `./.figma/make/site.json` yang hanya ada di environment Figma Make. Dockerfile otomatis memakai `make/site.json` sebagai fallback bila file tersebut tidak ada, jadi `docker build` tetap berhasil di luar Figma Make. Port host default `8099` dipakai karena `8080` umumnya sudah terisi di mesin dev — ubah mapping port bila perlu (mis. `"8080:80"`).
 
 ## Konfigurasi
 

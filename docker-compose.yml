@@ -2,5 +2,5 @@ services:
   daily-apps:
     build: .
     ports:
-      - "8080:80"
+      - "8099:80"
     restart: unless-stopped
