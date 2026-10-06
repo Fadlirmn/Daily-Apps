@@ -1,0 +1,10 @@
+{
+  "description": "An integrated app for managing daily tasks and personal finances, helping users track their routines and budgets in one place for better financial discipline.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

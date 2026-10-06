@@ -1,0 +1,197 @@
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&family=Roboto:wght@400;500;600&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-background: #121212;
+  --color-surface: #1c1b1f;
+  --color-surface-container: #211f26;
+  --color-surface-container-high: #2b2930;
+  --color-surface-translucent: rgb(255 255 255 / 8%);
+  --color-primary: #bfa9ff;
+  --color-on-primary: #2a0f6b;
+  --color-primary-container: #4a3a8f;
+  --color-secondary: #ccc2dc;
+  --color-tertiary: #7fd6c2;
+  --color-on-tertiary: #00382f;
+  --color-tertiary-container: rgb(127 214 194 / 14%);
+  --color-on-surface: #e6e1e5;
+  --color-on-surface-variant: #cac4d0;
+  --color-outline: #938f99;
+  --color-outline-variant: #49454f;
+  --color-income: #7ddc9a;
+  --color-expense: #ff8a80;
+  --color-warning: #ffd54f;
+  --color-warning-container: rgb(255 213 79 / 12%);
+  --color-nav: rgb(28 27 31 / 96%);
+  --color-scrim: rgb(0 0 0 / 65%);
+  --color-inverse-surface: #e6e1e5;
+  --color-inverse-on-surface: #313033;
+  --radius-medium: 0.75rem;
+  --radius-large: 1rem;
+  --radius-extra: 1.5rem;
+  --radius-sheet: 1.75rem;
+  --max-width-mobile: 30rem;
+  --max-width-desktop: 90rem;
+  --width-sidebar: 16rem;
+  --text-label-sm: 0.6875rem;
+  --text-label-sm--line-height: 1rem;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.25rem;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.25rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-title: 1.125rem;
+  --text-title--line-height: 1.5rem;
+  --text-headline: 1.625rem;
+  --text-headline--line-height: 2rem;
+  --text-display: 2rem;
+  --text-display--line-height: 2.5rem;
+  --text-money: 2.25rem;
+  --text-money--line-height: 2.75rem;
+  --text-icon-xs: 1rem;
+  --text-icon-sm: 1.25rem;
+  --text-icon-lg: 2rem;
+}
+
+:root {
+  color: var(--color-on-surface);
+  background: #0b0b0c;
+  font-family: "Roboto", sans-serif;
+  font-synthesis: none;
+}
+
+body {
+  margin: 0;
+  min-width: 20rem;
+  min-height: 100vh;
+}
+
+.app-shell {
+  box-shadow: 0 0 5rem rgb(0 0 0 / 40%);
+}
+
+.scroll-area {
+  height: calc(100vh - 6.25rem);
+  scrollbar-width: none;
+}
+
+.scroll-area::-webkit-scrollbar {
+  display: none;
+}
+
+.material-symbols-rounded {
+  display: inline-block;
+  direction: ltr;
+  font-family: "Material Symbols Rounded";
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "liga";
+}
+
+.icon-filled {
+  font-variation-settings: "FILL" 1;
+}
+
+.money {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+}
+
+.bg-money-card {
+  background:
+    radial-gradient(circle at 88% 12%, rgb(191 169 255 / 18%), transparent 38%),
+    linear-gradient(145deg, #29233a, #201e26);
+  border: 1px solid rgb(191 169 255 / 12%);
+}
+
+.bg-balance-card {
+  background:
+    radial-gradient(circle at 85% 15%, rgb(127 214 194 / 16%), transparent 40%),
+    linear-gradient(145deg, #27223b, #201e26);
+  border: 1px solid rgb(191 169 255 / 12%);
+}
+
+.fab {
+  box-shadow: 0 0.5rem 1.75rem rgb(0 0 0 / 42%);
+}
+
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
+.sheet {
+  animation: slide-up 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (min-width: 48rem) {
+  .app-shell {
+    min-height: calc(100vh - 2rem);
+    margin-block: 1rem;
+    border-radius: 1.75rem;
+  }
+}
+
+@media (min-width: 64rem) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: var(--width-sidebar) minmax(0, 1fr);
+    width: calc(100% - 2rem);
+    max-width: var(--max-width-desktop);
+    height: calc(100vh - 2rem);
+  }
+
+  .desktop-sidebar {
+    height: 100%;
+  }
+
+  .desktop-content {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .desktop-content > header,
+  .desktop-content > main {
+    width: min(100%, 64rem);
+    margin-inline: auto;
+  }
+
+  .desktop-content > header {
+    padding-inline: 2rem;
+    padding-top: 2rem;
+  }
+
+  .desktop-content > main {
+    height: calc(100vh - 7.5rem);
+    padding-inline: 2rem;
+    padding-bottom: 3rem;
+  }
+
+  .sheet {
+    border-radius: var(--radius-sheet);
+  }
+}
