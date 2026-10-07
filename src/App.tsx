@@ -59,10 +59,12 @@ function Today({
   spent,
   completed,
   setCompleted,
+  setActive,
 }: {
   spent: number;
   completed: number[];
   setCompleted: React.Dispatch<React.SetStateAction<number[]>>;
+  setActive: React.Dispatch<React.SetStateAction<string>>;
 }) {
   const percent = Math.min(100, Math.round((spent / 180000) * 100));
 
@@ -299,7 +301,7 @@ function Activity({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-label text-primary">PROGRES HARI INI</p>
-              <p className="mt-3 text-display text-on-surface">{completed.length} dari 3</p>
+              <p className="mt-3 text-display text-on-surface">{completed.length} dari {allTasks.length}</p>
               <p className="mt-1 text-body-sm text-on-surface-variant">tugas sudah diselesaikan</p>
             </div>
             <div className="grid size-14 place-items-center rounded-full bg-primary-container text-primary">
@@ -309,7 +311,7 @@ function Activity({
           <div className="mt-5 h-2 overflow-hidden rounded-full bg-outline-variant">
             <div
               className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${(completed.length / tasks.length) * 100}%` }}
+              style={{ width: `${(completed.length / allTasks.length) * 100}%` }}
             />
           </div>
         </section>
@@ -340,15 +342,22 @@ function Activity({
               <div>
                 <p className="text-title text-on-surface">Tugas hari ini</p>
                 <p className="mt-1 text-label-sm text-on-surface-variant">
-                  {tasks.length - completed.length} tugas masih perlu diselesaikan
+                  {allTasks.length - completed.length} tugas masih perlu diselesaikan
                 </p>
               </div>
+              <Action
+                label="Tambah tugas"
+                onClick={() => setAddModal("Tugas")}
+                className="rounded-full px-3 py-2 text-label text-primary"
+              >
+                Tambah
+              </Action>
               <Action label="Filter tugas" className="grid size-11 place-items-center rounded-full text-on-surface">
                 <Icon name="tune" />
               </Action>
             </div>
             <div className="overflow-hidden rounded-large bg-surface-container">
-              {tasks.map((task, index) => {
+              {allTasks.map((task, index) => {
                 const done = completed.includes(task.id);
                 return (
                   <Action
@@ -356,7 +365,7 @@ function Activity({
                     label={`${done ? "Batalkan" : "Tandai"} tugas ${task.title}`}
                     onClick={() => toggleTask(task.id)}
                     className={`flex items-center gap-3 p-4 ${
-                      index !== tasks.length - 1 ? "border-b border-outline-variant" : ""
+                      index !== allTasks.length - 1 ? "border-b border-outline-variant" : ""
                     }`}
                   >
                     <div
@@ -389,19 +398,21 @@ function Activity({
                 <p className="text-title text-on-surface">Jadwal hari ini</p>
                 <p className="mt-1 text-label-sm text-on-surface-variant">Senin, 28 September</p>
               </div>
-              <Action label="Tambah jadwal" className="rounded-full px-3 py-2 text-label text-primary">
+              <Action
+                label="Tambah jadwal"
+                onClick={() => setAddModal("Jadwal")}
+                className="rounded-full px-3 py-2 text-label text-primary"
+              >
                 Tambah
               </Action>
             </div>
-            {[
-              { time: "09.30", title: "Review proposal klien", meta: "Ruang fokus · 45 menit" },
-              { time: "12.00", title: "Bayar tagihan internet", meta: "Pengingat · 10 menit" },
-              { time: "18.00", title: "Beli kebutuhan dapur", meta: "Pribadi · 30 menit" },
-            ].map((schedule, index) => (
-              <div className="flex gap-4 rounded-large bg-surface-container p-4" key={schedule.time}>
+            {schedules.map((schedule, index) => (
+              <div className="flex gap-4 rounded-large bg-surface-container p-4" key={`${schedule.time}-${schedule.title}`}>
                 <div className="flex flex-col items-center">
                   <span className="money text-label text-primary">{schedule.time}</span>
-                  {index !== 2 && <span className="mt-2 h-10 w-0.5 rounded-full bg-outline-variant" />}
+                  {index !== schedules.length - 1 && (
+                    <span className="mt-2 h-10 w-0.5 rounded-full bg-outline-variant" />
+                  )}
                 </div>
                 <div>
                   <p className="text-body text-on-surface">{schedule.title}</p>
@@ -419,16 +430,16 @@ function Activity({
                 <p className="text-title text-on-surface">Kebiasaan hari ini</p>
                 <p className="mt-1 text-label-sm text-on-surface-variant">Pertahankan konsistensimu</p>
               </div>
-              <Action label="Tambah kebiasaan" className="rounded-full px-3 py-2 text-label text-primary">
+              <Action
+                label="Tambah kebiasaan"
+                onClick={() => setAddModal("Kebiasaan")}
+                className="rounded-full px-3 py-2 text-label text-primary"
+              >
                 Tambah
               </Action>
             </div>
             <div className="space-y-3">
-              {[
-                { icon: "water_drop", title: "Minum air", meta: "6 dari 8 gelas", progress: "w-3/4" },
-                { icon: "directions_run", title: "Olahraga", meta: "Selesai · Runtun 12 hari", progress: "w-full" },
-                { icon: "menu_book", title: "Membaca", meta: "Selesai · 20 menit", progress: "w-full" },
-              ].map((habit) => (
+              {habits.map((habit) => (
                 <Action
                   key={habit.title}
                   label={`Buka kebiasaan ${habit.title}`}
@@ -452,6 +463,44 @@ function Activity({
           </section>
         )}
       </main>
+
+      {addModal === "Tugas" && (
+        <GenericAddModal
+          title="Tambah tugas"
+          close={() => setAddModal(null)}
+          onSave={handleAdd}
+          fields={[
+            { name: "title", label: "Judul tugas", placeholder: "cth: Kirim invoice" },
+            { name: "time", label: "Waktu", placeholder: "cth: 15.00" },
+            { name: "tag", label: "Kategori", placeholder: "cth: Kerja" },
+          ]}
+        />
+      )}
+
+      {addModal === "Jadwal" && (
+        <GenericAddModal
+          title="Tambah jadwal"
+          close={() => setAddModal(null)}
+          onSave={handleAdd}
+          fields={[
+            { name: "time", label: "Waktu", placeholder: "cth: 14.00" },
+            { name: "title", label: "Judul", placeholder: "cth: Meeting tim" },
+            { name: "meta", label: "Catatan", placeholder: "cth: Ruang fokus · 30 menit" },
+          ]}
+        />
+      )}
+
+      {addModal === "Kebiasaan" && (
+        <GenericAddModal
+          title="Tambah kebiasaan"
+          close={() => setAddModal(null)}
+          onSave={handleAdd}
+          fields={[
+            { name: "title", label: "Nama kebiasaan", placeholder: "cth: Meditasi" },
+            { name: "meta", label: "Target/Progress", placeholder: "cth: 10 menit" },
+          ]}
+        />
+      )}
     </>
   );
 }
@@ -947,6 +996,8 @@ export default function App() {
     ],
     [],
   );
+  // Bottom-nav mobile tetap 4 tab inti (desain asli); Profil diakses via avatar di header Today.
+  const mobileNavItems = useMemo(() => navItems.filter((item) => item.id !== "profile"), [navItems]);
 
   function saveTransaction(amount: number) {
     setSpent((value) => value + amount);
@@ -1008,7 +1059,7 @@ export default function App() {
 
       <div className="desktop-content">
         {active === "today" && (
-          <Today spent={spent} completed={completed} setCompleted={setCompleted} />
+          <Today spent={spent} completed={completed} setCompleted={setCompleted} setActive={setActive} />
         )}
         {active === "activity" && <Activity completed={completed} setCompleted={setCompleted} />}
         {active === "finance" && <Finance spent={spent} />}
@@ -1016,20 +1067,20 @@ export default function App() {
         {active === "profile" && <Profile />}
       </div>
 
-      <nav className="absolute inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-outline-variant bg-nav px-1 pb-safe pt-2 lg:hidden">
-        {navItems.slice(0, 3).map((item) => (
+      <nav className="absolute inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-outline-variant bg-nav px-2 pb-safe pt-2 lg:hidden">
+        {mobileNavItems.slice(0, 2).map((item) => (
           <NavItem key={item.id} {...item} active={active === item.id} onClick={() => setActive(item.id)} />
         ))}
         <div className="flex justify-center">
           <Action
             label="Tambah cepat"
             onClick={() => setSheetOpen(true)}
-            className="fab -mt-8 grid size-14 place-items-center rounded-large bg-primary text-on-primary"
+            className="fab -mt-8 grid size-16 place-items-center rounded-large bg-primary text-on-primary"
           >
             <Icon name="add" className="text-icon-lg" />
           </Action>
         </div>
-        {navItems.slice(3).map((item) => (
+        {mobileNavItems.slice(2).map((item) => (
           <NavItem key={item.id} {...item} active={active === item.id} onClick={() => setActive(item.id)} />
         ))}
       </nav>
