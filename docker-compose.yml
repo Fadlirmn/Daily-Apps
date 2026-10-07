@@ -1,6 +1,43 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: daily-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fintrack
+      POSTGRES_USER: fintrack
+      POSTGRES_PASSWORD: fintrack_secret
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - daily-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fintrack -d fintrack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   daily-apps:
     build: .
     ports:
       - "8099:80"
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=fintrack
+      - POSTGRES_USER=fintrack
+      - POSTGRES_PASSWORD=fintrack_secret
+    networks:
+      - daily-net
+
+volumes:
+  pgdata:
+
+networks:
+  daily-net:
+    driver: bridge

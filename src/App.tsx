@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import Profile from "./Profile";
 
 type IconProps = {
   name: string;
@@ -80,6 +81,7 @@ function Today({
         </div>
         <Action
           label="Buka profil"
+          onClick={() => setActive("profile")}
           className="grid size-12 place-items-center rounded-full bg-primary-container text-primary"
         >
           <span className="text-title font-semibold">R</span>
@@ -249,6 +251,30 @@ function Activity({
   setCompleted: React.Dispatch<React.SetStateAction<number[]>>;
 }) {
   const [view, setView] = useState("Tugas");
+  const [addModal, setAddModal] = useState<null | "Tugas" | "Jadwal" | "Kebiasaan">(null);
+  const [extraTasks, setExtraTasks] = useState<{ id: number; title: string; time: string; tag: string }[]>([]);
+  const [schedules, setSchedules] = useState([
+    { time: "09.30", title: "Review proposal klien", meta: "Ruang fokus \u00B7 45 menit" },
+    { time: "12.00", title: "Bayar tagihan internet", meta: "Pengingat \u00B7 10 menit" },
+    { time: "18.00", title: "Beli kebutuhan dapur", meta: "Pribadi \u00B7 30 menit" },
+  ]);
+  const [habits, setHabits] = useState([
+    { icon: "water_drop", title: "Minum air", meta: "6 dari 8 gelas", progress: "w-3/4" },
+    { icon: "directions_run", title: "Olahraga", meta: "Selesai \u00B7 Runtun 12 hari", progress: "w-full" },
+    { icon: "menu_book", title: "Membaca", meta: "Selesai \u00B7 20 menit", progress: "w-full" },
+  ]);
+  const allTasks = [...tasks, ...extraTasks];
+  function handleAdd(values: Record<string, string>) {
+    const title = (values.title || "Item baru").trim() || "Item baru";
+    if (addModal === "Tugas") {
+      setExtraTasks((c) => [...c, { id: Date.now(), title, time: values.time || "--.--", tag: values.tag || "Pribadi" }]);
+    } else if (addModal === "Jadwal") {
+      setSchedules((c) => [...c, { time: values.time || "--.--", title, meta: values.meta || "Baru" }]);
+    } else if (addModal === "Kebiasaan") {
+      setHabits((c) => [...c, { icon: "autorenew", title, meta: values.meta || "Baru", progress: "w-1/4" }]);
+    }
+    setAddModal(null);
+  }
 
   function toggleTask(id: number) {
     setCompleted((current) =>
@@ -848,6 +874,62 @@ function QuickAdd({
   );
 }
 
+
+function GenericAddModal({
+  title,
+  close,
+  onSave,
+  fields,
+}: {
+  title: string;
+  close: () => void;
+  onSave: (values: Record<string, string>) => void;
+  fields: { name: string; label: string; placeholder: string }[];
+}) {
+  const [vals, setVals] = useState<Record<string, string>>({});
+
+  return (
+    <div className="absolute inset-0 z-50 flex items-end bg-scrim" role="dialog" aria-modal="true">
+      <Action label="Tutup" className="absolute inset-0" onClick={close}>
+        <span />
+      </Action>
+      <section className="sheet relative z-10 w-full rounded-t-sheet bg-surface-container-high p-5 pb-7 lg:mx-auto lg:mb-8 lg:max-w-mobile lg:rounded-sheet">
+        <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-outline" />
+        <div className="flex items-center justify-between">
+          <p className="text-title text-on-surface">{title}</p>
+          <Action label="Tutup" onClick={close} className="grid size-11 place-items-center rounded-full">
+            <Icon name="close" />
+          </Action>
+        </div>
+
+        <div className="mt-4 space-y-4">
+          {fields.map((f) => (
+            <div key={f.name} className="rounded-large border border-outline bg-surface px-4 py-3">
+              <p className="text-label-sm text-primary">{f.label}</p>
+              <input
+                type="text"
+                placeholder={f.placeholder}
+                className="mt-1 w-full bg-transparent text-body text-on-surface outline-none"
+                onChange={(e) => setVals({ ...vals, [f.name]: e.target.value })}
+              />
+            </div>
+          ))}
+        </div>
+
+        <Action
+          label="Simpan"
+          onClick={() => onSave(vals)}
+          className="mt-6 flex items-center justify-center gap-2 rounded-full bg-primary py-4 text-label text-on-primary"
+        >
+          <Icon name="check" />
+          Simpan Data
+        </Action>
+      </section>
+    </div>
+  );
+}
+
+
 export default function App() {
   const [active, setActive] = useState("today");
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -861,6 +943,7 @@ export default function App() {
       { id: "activity", icon: "check_circle", label: "Aktivitas" },
       { id: "finance", icon: "account_balance_wallet", label: "Keuangan" },
       { id: "report", icon: "bar_chart", label: "Laporan" },
+      { id: "profile", icon: "person", label: "Profil" },
     ],
     [],
   );
@@ -930,22 +1013,23 @@ export default function App() {
         {active === "activity" && <Activity completed={completed} setCompleted={setCompleted} />}
         {active === "finance" && <Finance spent={spent} />}
         {active === "report" && <Report />}
+        {active === "profile" && <Profile />}
       </div>
 
-      <nav className="absolute inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-outline-variant bg-nav px-2 pb-safe pt-2 lg:hidden">
-        {navItems.slice(0, 2).map((item) => (
+      <nav className="absolute inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-outline-variant bg-nav px-1 pb-safe pt-2 lg:hidden">
+        {navItems.slice(0, 3).map((item) => (
           <NavItem key={item.id} {...item} active={active === item.id} onClick={() => setActive(item.id)} />
         ))}
         <div className="flex justify-center">
           <Action
             label="Tambah cepat"
             onClick={() => setSheetOpen(true)}
-            className="fab -mt-8 grid size-16 place-items-center rounded-large bg-primary text-on-primary"
+            className="fab -mt-8 grid size-14 place-items-center rounded-large bg-primary text-on-primary"
           >
             <Icon name="add" className="text-icon-lg" />
           </Action>
         </div>
-        {navItems.slice(2).map((item) => (
+        {navItems.slice(3).map((item) => (
           <NavItem key={item.id} {...item} active={active === item.id} onClick={() => setActive(item.id)} />
         ))}
       </nav>
