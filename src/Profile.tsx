@@ -1,272 +1,226 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import DataSheet from "./DataSheet";
+import {
+  addFixed, calc, deleteFixed, exportJson, fmt, loadSample, resetAll, setProfile, updateFixed, useStore,
+  type Profile as ProfileT,
+} from "./store";
+import { Action, Empty, Field, Icon, PageHeader, PrimaryButton, inputCls } from "./ui";
 
-function Icon({ name, filled = false, className = "" }: { name: string; filled?: boolean; className?: string }) {
-  return (
-    <span aria-hidden="true" className={`material-symbols-rounded ${filled ? "icon-filled" : ""} ${className}`}>
-      {name}
-    </span>
-  );
-}
-
-function Action({
-  children,
-  label,
-  className = "",
-  onClick,
-}: {
-  children: React.ReactNode;
-  label: string;
-  className?: string;
-  onClick?: () => void;
-}) {
-  return (
-    <div
-      aria-label={label}
-      className={`cursor-pointer select-none ${className}`}
-      onClick={onClick}
-      onKeyDown={(event) => event.key === "Enter" && onClick?.()}
-      role="button"
-      tabIndex={0}
-    >
-      {children}
-    </div>
-  );
-}
+const num = (v: string) => Number(v.replace(/\D/g, "")) || 0;
+const grp = (v: string | number) => (Number(v) ? Number(v).toLocaleString("id-ID") : "");
 
 export default function Profile() {
-  const [name, setName] = useState("Raka");
-  const [email, setEmail] = useState("admin@gmail.com");
-  const [currency, setCurrency] = useState("IDR");
-  const [monthlyIncome, setMonthlyIncome] = useState("2000000");
-  const [telegramId, setTelegramId] = useState("");
-  const [verifyCode, setVerifyCode] = useState("");
-  const [fixedExpenses, setFixedExpenses] = useState<{ id: string; name: string; amount: number; is_active: boolean }[]>([
-    { id: "1", name: "Internet", amount: 350000, is_active: true },
-    { id: "2", name: "Listrik & Air", amount: 500000, is_active: true },
-  ]);
-  const [newExpName, setNewExpName] = useState("");
-  const [newExpAmount, setNewExpAmount] = useState("");
+  const s = useStore();
+  const c = calc(s);
+  const [draft, setDraft] = useState<ProfileT>(s.profile);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [fName, setFName] = useState("");
+  const [fAmount, setFAmount] = useState("");
+  const [fPeriod, setFPeriod] = useState<"harian" | "bulanan">("bulanan");
+  const [fError, setFError] = useState("");
+  const [data, setData] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
-  useEffect(() => {
-    // Load from mock or simulate fetching default user
-    fetch("http://localhost:8099/api/users/47d22b71-3285-48bd-ae7f-4e79b41b3215")
-      .then((res) => res.json())
-      .catch(() => {});
-  }, []);
+  // sinkronkan draf saat profil di store berubah (impor, reset)
+  useEffect(() => setDraft(s.profile), [s.profile]);
 
-  function handleSave(e: React.FormEvent) {
+  // pratinjau budget memakai draf, supaya slider langsung terasa
+  const spendPct = (100 - draft.wealthGoal) / 100;
+  const previewMonthly = Math.round(draft.monthlyIncome * spendPct);
+  const previewDaily = Math.round(previewMonthly / 30);
+
+  function save(e: React.FormEvent) {
     e.preventDefault();
-    setSaved(true);
+    if (draft.monthlyIncome < 0) return setError("Target pemasukan tidak boleh negatif.");
+    if (draft.email && !/^\S+@\S+\.\S+$/.test(draft.email)) return setError("Format email tidak valid.");
     setError("");
-    setTimeout(() => setSaved(false), 3000);
+    setProfile({ ...draft, name: draft.name.trim() || "Pengguna" });
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2500);
   }
 
-  function addFixedExpense() {
-    if (!newExpName || !newExpAmount) return;
-    setFixedExpenses([
-      ...fixedExpenses,
-      {
-        id: Date.now().toString(),
-        name: newExpName,
-        amount: Number(newExpAmount) || 0,
-        is_active: true,
-      },
-    ]);
-    setNewExpName("");
-    setNewExpAmount("");
-  }
-
-  function removeExpense(id: string) {
-    setFixedExpenses(fixedExpenses.filter((item) => item.id !== id));
+  function addExpense() {
+    if (!fName.trim()) return setFError("Nama pengeluaran wajib diisi.");
+    if (num(fAmount) <= 0) return setFError("Nominal harus lebih dari 0.");
+    setFError("");
+    addFixed({ name: fName.trim(), amount: num(fAmount), period: fPeriod });
+    setFName("");
+    setFAmount("");
   }
 
   return (
     <>
-      <header className="flex items-center justify-between px-5 pb-4 pt-6">
-        <div>
-          <p className="text-headline text-on-surface">Profil & Pengaturan</p>
-          <p className="mt-1 text-body-sm text-on-surface-variant">Kelola akun, integrasi & pengeluaran tetap</p>
-        </div>
-      </header>
-
+      <PageHeader title="Profil & Pengaturan" sub="Kelola akun, budget, dan pengeluaran tetap" />
       <main className="scroll-area space-y-5 overflow-y-auto px-4 pb-36">
         {saved && (
-          <div className="flex items-center gap-3 rounded-medium bg-income/20 border border-income/30 p-4 text-income">
+          <div role="status" className="flex items-center gap-3 rounded-medium border border-income/30 bg-income/20 p-4 text-income">
             <Icon name="check_circle" />
-            <p className="text-body-sm">Profil dan pengaturan berhasil disimpan!</p>
+            <p className="text-body-sm">Profil dan pengaturan berhasil disimpan.</p>
           </div>
         )}
-
         {error && (
-          <div className="flex items-center gap-3 rounded-medium bg-expense/20 border border-expense/30 p-4 text-expense">
+          <div role="alert" className="flex items-center gap-3 rounded-medium border border-expense/30 bg-expense/20 p-4 text-expense">
             <Icon name="error" />
             <p className="text-body-sm">{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSave} className="space-y-5">
-          {/* Edit Profil */}
-          <section className="rounded-extra bg-surface-container p-5 space-y-4">
+        <form onSubmit={save} className="space-y-5">
+          <section className="space-y-4 rounded-extra bg-surface-container p-5">
             <div className="flex items-center gap-2 text-primary">
               <Icon name="person" className="text-icon-sm" />
-              <p className="text-title">Informasi Akun</p>
+              <p className="text-title">Akun</p>
             </div>
+            <Field label="Nama">
+              <input id="p-name" className={inputCls} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+            </Field>
+            <Field label="Email">
+              <input id="p-email" type="email" className={inputCls} value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
+            </Field>
+          </section>
 
-            <div>
-              <label className="block text-label-sm text-on-surface-variant mb-1">Nama Lengkap</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-              />
+          <section className="space-y-4 rounded-extra bg-surface-container p-5">
+            <div className="flex items-center gap-2 text-primary">
+              <Icon name="payments" className="text-icon-sm" />
+              <p className="text-title">Keuangan</p>
             </div>
-
-            <div>
-              <label className="block text-label-sm text-on-surface-variant mb-1">Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-              />
-            </div>
-
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-label-sm text-on-surface-variant mb-1">Mata Uang (Currency)</label>
-                <select
-                  value={currency}
-                  onChange={(e) => setCurrency(e.target.value)}
-                  className="w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-                >
+              <Field label="Mata uang">
+                <select id="p-cur" className={inputCls} value={draft.currency} onChange={(e) => setDraft({ ...draft, currency: e.target.value as ProfileT["currency"] })}>
                   <option value="IDR">IDR (Rp)</option>
                   <option value="USD">USD ($)</option>
                   <option value="EUR">EUR (€)</option>
                 </select>
+              </Field>
+              <Field label="Saldo awal">
+                <input id="p-start" inputMode="numeric" className={inputCls} value={grp(draft.startBalance)} onChange={(e) => setDraft({ ...draft, startBalance: num(e.target.value) })} placeholder="0" />
+              </Field>
+            </div>
+            <Field label="Pemasukan bulanan">
+              <input id="p-income" inputMode="numeric" className={inputCls} value={grp(draft.monthlyIncome)} onChange={(e) => setDraft({ ...draft, monthlyIncome: num(e.target.value) })} placeholder="0" />
+            </Field>
+            <div>
+              <div className="flex items-center justify-between">
+                <label htmlFor="p-goal" className="text-label-sm text-on-surface-variant">Target menabung</label>
+                <p className="money text-label text-primary">
+                  {draft.wealthGoal}% · {fmt(Math.round((draft.monthlyIncome * draft.wealthGoal) / 100))}
+                </p>
+              </div>
+              <input
+                id="p-goal" type="range" min={10} max={80} step={1}
+                value={draft.wealthGoal}
+                onChange={(e) => setDraft({ ...draft, wealthGoal: Number(e.target.value) })}
+                className="mt-2 w-full accent-primary"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3 rounded-large bg-surface p-3">
+              <div>
+                <p className="text-label-sm text-on-surface-variant">BUDGET BULANAN</p>
+                <p className="money mt-1 text-label text-on-surface">{fmt(previewMonthly)}</p>
               </div>
               <div>
-                <label className="block text-label-sm text-on-surface-variant mb-1">Target Pemasukan Bulanan</label>
-                <input
-                  type="number"
-                  value={monthlyIncome}
-                  onChange={(e) => setMonthlyIncome(e.target.value)}
-                  className="w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-                />
+                <p className="text-label-sm text-on-surface-variant">BUDGET HARIAN</p>
+                <p className="money mt-1 text-label text-on-surface">{fmt(previewDaily)}</p>
               </div>
             </div>
           </section>
 
-          {/* Integrasi Telegram */}
-          <section className="rounded-extra bg-surface-container p-5 space-y-4">
+          <PrimaryButton onClick={() => save({ preventDefault() {} } as React.FormEvent)}>Simpan perubahan</PrimaryButton>
+        </form>
+
+        <section className="space-y-4 rounded-extra bg-surface-container p-5">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-primary">
-              <Icon name="send" className="text-icon-sm" />
-              <p className="text-title">Integrasi Telegram</p>
+              <Icon name="receipt_long" className="text-icon-sm" />
+              <p className="text-title">Pengeluaran tetap</p>
             </div>
-            <p className="text-body-sm text-on-surface-variant">
-              Hubungkan akun Telegram Anda untuk pencatatan transaksi instan melalui Bot Telegram Arunika.
-            </p>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-label-sm text-on-surface-variant mb-1">Telegram Chat ID / Username</label>
-                <input
-                  type="text"
-                  placeholder="@username atau 12345678"
-                  value={telegramId}
-                  onChange={(e) => setTelegramId(e.target.value)}
-                  className="w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-label-sm text-on-surface-variant mb-1">Kode Verifikasi Bot</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Contoh: 9842"
-                    value={verifyCode}
-                    onChange={(e) => setVerifyCode(e.target.value)}
-                    className="w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setVerifyCode(Math.floor(1000 + Math.random() * 9000).toString())}
-                    className="rounded-large bg-primary-container px-4 py-3 text-label text-primary shrink-0"
-                  >
-                    Generate
-                  </button>
+            <p className="money text-label text-expense">{fmt(c.fixedDaily)}/hari</p>
+          </div>
+          <p className="text-body-sm text-on-surface-variant">
+            Tagihan rutin yang dipotong dari budget belanja. Matikan sementara saat libur atau WFH.
+          </p>
+          {s.fixed.length === 0 && <Empty icon="receipt_long" text="Belum ada pengeluaran tetap." />}
+          <div className="space-y-2">
+            {s.fixed.map((f) => (
+              <div key={f.id} className={`flex items-center gap-2 rounded-large border border-outline-variant bg-surface p-3 ${f.isActive ? "" : "opacity-60"}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-body text-on-surface">{f.name}</p>
+                  <p className="money text-label-sm text-expense">
+                    {fmt(f.amount)} / {f.period === "harian" ? "hari" : "bulan"}
+                  </p>
                 </div>
+                <Action
+                  label={`${f.isActive ? "Matikan" : "Aktifkan"} ${f.name}`}
+                  onClick={() => updateFixed(f.id, { isActive: !f.isActive })}
+                  className={`rounded-full px-3 py-2 text-label-sm ${f.isActive ? "bg-tertiary-container text-tertiary" : "bg-surface-container-high text-on-surface-variant"}`}
+                >
+                  {f.isActive ? "Aktif" : "OFF"}
+                </Action>
+                <Action label={`Hapus ${f.name}`} onClick={() => deleteFixed(f.id)} className="grid size-11 place-items-center rounded-full text-on-surface-variant">
+                  <Icon name="delete" className="text-icon-sm" />
+                </Action>
               </div>
+            ))}
+          </div>
+          <div className="space-y-2 pt-2">
+            <div className="flex gap-2">
+              <input id="f-name" aria-label="Nama pengeluaran" className={`${inputCls} min-w-0 flex-1`} placeholder="Nama (cth: Internet)" value={fName} onChange={(e) => setFName(e.target.value)} />
+              <input id="f-amount" aria-label="Nominal pengeluaran" inputMode="numeric" className={`${inputCls} w-32`} placeholder="Nominal" value={grp(fAmount)} onChange={(e) => setFAmount(String(num(e.target.value)))} />
             </div>
-          </section>
-
-          {/* Pengeluaran Tetap (Fixed Expenses) */}
-          <section className="rounded-extra bg-surface-container p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-primary">
-                <Icon name="receipt_long" className="text-icon-sm" />
-                <p className="text-title">Pengeluaran Tetap (Fixed Expenses)</p>
-              </div>
-            </div>
-            <p className="text-body-sm text-on-surface-variant">
-              Tagihan rutin atau cicilan yang dibayar setiap bulan.
-            </p>
-
-            <div className="space-y-2">
-              {fixedExpenses.map((item) => (
-                <div key={item.id} className="flex items-center justify-between bg-surface p-3 rounded-large border border-outline-variant">
-                  <div>
-                    <p className="text-body text-on-surface">{item.name}</p>
-                    <p className="money text-label-sm text-expense">Rp {item.amount.toLocaleString("id-ID")}</p>
-                  </div>
-                  <Action
-                    label={`Hapus ${item.name}`}
-                    onClick={() => removeExpense(item.id)}
-                    className="text-on-surface-variant hover:text-expense p-2"
-                  >
-                    <Icon name="delete" className="text-icon-sm" />
-                  </Action>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <input
-                type="text"
-                placeholder="Nama Pengeluaran (cth: Netflix)"
-                value={newExpName}
-                onChange={(e) => setNewExpName(e.target.value)}
-                className="flex-1 rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-              />
-              <input
-                type="number"
-                placeholder="Nominal (Rp)"
-                value={newExpAmount}
-                onChange={(e) => setNewExpAmount(e.target.value)}
-                className="w-36 rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
-              />
-              <button
-                type="button"
-                onClick={addFixedExpense}
-                className="rounded-large bg-primary px-5 py-3 text-label text-on-primary shrink-0 flex items-center gap-1"
-              >
+            <div className="flex gap-2">
+              <select id="f-period" aria-label="Periode" className={`${inputCls} flex-1`} value={fPeriod} onChange={(e) => setFPeriod(e.target.value as "harian" | "bulanan")}>
+                <option value="bulanan">Per bulan</option>
+                <option value="harian">Per hari</option>
+              </select>
+              <Action label="Tambah pengeluaran tetap" onClick={addExpense} className="flex items-center gap-1 rounded-large bg-primary px-5 py-3 text-label text-on-primary">
                 <Icon name="add" />
                 Tambah
-              </button>
+              </Action>
             </div>
-          </section>
+            {fError && <p className="text-body-sm text-expense">{fError}</p>}
+          </div>
+        </section>
 
-          <button
-            type="submit"
-            className="w-full flex items-center justify-center gap-2 rounded-full bg-primary py-4 text-label text-on-primary font-semibold shadow-lg"
-          >
-            <Icon name="check" />
-            Simpan Perubahan
-          </button>
-        </form>
+        <section className="space-y-3 rounded-extra bg-surface-container p-5">
+          <div className="flex items-center gap-2 text-primary">
+            <Icon name="database" className="text-icon-sm" />
+            <p className="text-title">Data</p>
+          </div>
+          <p className="text-body-sm text-on-surface-variant">
+            Data tersimpan di browser ini. Salin cadangan JSON untuk memindahkannya ke perangkat lain.
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Action label="Cadangan dan impor" onClick={() => setData(true)} className="flex items-center justify-center gap-2 rounded-full bg-primary-container py-3 text-label text-primary">
+              <Icon name="backup" className="text-icon-sm" />
+              Cadangan
+            </Action>
+            <Action label="Muat data contoh" onClick={loadSample} className="flex items-center justify-center gap-2 rounded-full bg-primary-container py-3 text-label text-primary">
+              <Icon name="science" className="text-icon-sm" />
+              Data contoh
+            </Action>
+          </div>
+          {confirmReset ? (
+            <div className="space-y-2 rounded-large bg-expense/10 p-3">
+              <p className="text-body-sm text-expense">Semua data akan dihapus permanen. Lanjutkan?</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Action label="Batal hapus" onClick={() => setConfirmReset(false)} className="rounded-full bg-surface-container-high py-3 text-center text-label text-on-surface">
+                  Batal
+                </Action>
+                <Action label="Ya, hapus semua" onClick={() => { resetAll(); setConfirmReset(false); }} className="rounded-full bg-expense py-3 text-center text-label text-background">
+                  Ya, hapus
+                </Action>
+              </div>
+            </div>
+          ) : (
+            <Action label="Hapus semua data" onClick={() => setConfirmReset(true)} className="flex items-center justify-center gap-2 rounded-full py-3 text-label text-expense">
+              <Icon name="delete_forever" className="text-icon-sm" />
+              Hapus semua data
+            </Action>
+          )}
+        </section>
       </main>
+      {data && <DataSheet title="Cadangan data" text={exportJson()} filename="arunika-backup.json" importable close={() => setData(false)} />}
     </>
   );
 }
