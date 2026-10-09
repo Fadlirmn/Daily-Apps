@@ -65,6 +65,7 @@ body {
   margin: 0;
   min-width: 20rem;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .app-shell {
@@ -73,6 +74,7 @@ body {
 
 .scroll-area {
   height: calc(100vh - 6.25rem);
+  height: calc(100dvh - 6.25rem);
   scrollbar-width: none;
 }
 
@@ -187,6 +189,7 @@ body {
 
   .desktop-content > main {
     height: calc(100vh - 7.5rem);
+    height: calc(100dvh - 7.5rem);
     padding-inline: 2rem;
     padding-bottom: 3rem;
   }

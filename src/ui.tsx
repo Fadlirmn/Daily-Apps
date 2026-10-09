@@ -182,7 +182,7 @@ export function SectionHead({
 export function ProfileChip({ active = false }: { active?: boolean }) {
   const go = useContext(NavContext);
   const { profile } = useStore();
-  const name = profile.name || "Pengguna";
+  const name = profile.name || "?";
   return (
     <Action label="Buka profil" onClick={() => go("profile")} className="flex min-w-0 shrink-0 flex-col items-center gap-1">
       <div className={`grid size-12 place-items-center rounded-full bg-primary-container text-primary ${active ? "ring-2 ring-primary" : ""}`}>

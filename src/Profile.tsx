@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import DataSheet from "./DataSheet";
 import {
-  addFixed, calc, deleteFixed, exportJson, fmt, loadSample, resetAll, setProfile, updateFixed, useStore,
+  addFixed, calc, deleteFixed, exportJson, fmt, resetAll, setProfile, updateFixed, useStore,
   type Profile as ProfileT,
 } from "./store";
 import { Action, Empty, Field, Icon, PageHeader, PrimaryButton, inputCls } from "./ui";
@@ -57,7 +57,7 @@ export default function Profile() {
     if (draft.email && !/^\S+@\S+\.\S+$/.test(draft.email)) return setError("Format email tidak valid.");
     setError("");
     try {
-      await setProfile({ ...draft, name: draft.name.trim() || "Pengguna" }, { immediate: true });
+      await setProfile({ ...draft, name: draft.name.trim() }, true);
     } catch {
       return setError("Gagal menyimpan ke server.");
     }
@@ -157,7 +157,7 @@ export default function Profile() {
                 </p>
               </div>
               <input
-                id="p-goal" type="range" min={10} max={80} step={1}
+                id="p-goal" type="range" min={0} max={100} step={1}
                 value={draft.wealthGoal}
                 onChange={(e) => liveWealthGoal(Number(e.target.value))}
                 className="mt-2 w-full accent-primary"
@@ -237,16 +237,12 @@ export default function Profile() {
             <p className="text-title">Data</p>
           </div>
           <p className="text-body-sm text-on-surface-variant">
-            Data tersimpan di browser ini. Salin cadangan JSON untuk memindahkannya ke perangkat lain.
+            Data tersimpan aman di akun Anda. Unduh cadangan JSON bila perlu.
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <Action label="Cadangan dan impor" onClick={() => setData(true)} className="flex items-center justify-center gap-2 rounded-full bg-primary-container py-3 text-label text-primary">
               <Icon name="backup" className="text-icon-sm" />
               Cadangan
-            </Action>
-            <Action label="Muat data contoh" onClick={loadSample} className="flex items-center justify-center gap-2 rounded-full bg-primary-container py-3 text-label text-primary">
-              <Icon name="science" className="text-icon-sm" />
-              Data contoh
             </Action>
           </div>
           {confirmReset ? (

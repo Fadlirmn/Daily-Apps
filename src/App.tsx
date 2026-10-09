@@ -7,7 +7,7 @@ import Report from "./Report";
 import Today from "./Today";
 import TxSheet from "./TxSheet";
 import { Login } from "./Login";
-import { deleteTx, fmt, useStore } from "./store";
+import { deleteTx, fetchBackendData, fmt, useStore } from "./store";
 import { Action, Icon, NavContext, ProfileChip } from "./ui";
 
 const NAV = [
@@ -36,7 +36,7 @@ export default function App() {
   }
 
   if (!authed) {
-    return <Login onLogin={() => setAuthed(true)} />;
+    return <Login onLogin={() => { setAuthed(true); void fetchBackendData(); }} />;
   }
 
   function onSaved(id: string, isNew: boolean) {
@@ -119,7 +119,7 @@ export default function App() {
         )}
       </div>
 
-      <nav className="absolute inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-outline-variant bg-nav px-2 pb-safe pt-2 lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-30 mx-auto grid w-full max-w-mobile grid-cols-5 items-end border-t border-outline-variant bg-nav px-2 pb-safe pt-2 lg:hidden">
         {MOBILE_NAV.slice(0, 2).map((item) => (
           <NavItem key={item.id} {...item} active={active === item.id} onClick={() => setActive(item.id)} />
         ))}

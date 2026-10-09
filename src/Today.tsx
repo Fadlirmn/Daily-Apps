@@ -1,7 +1,7 @@
 import { useState } from "react";
 import TxSheet, { TxRow } from "./TxSheet";
 import {
-  calc, fmt, habitStreak, loadSample, longDate, tapHabit, toggleTask, todayStr, useStore, type Tx,
+  calc, fmt, habitStreak, longDate, tapHabit, toggleTask, todayStr, useStore, type Tx,
 } from "./store";
 import { Action, Empty, Icon, ProfileChip, Progress, SectionHead } from "./ui";
 
@@ -28,7 +28,7 @@ export default function Today({ setActive }: { setActive: (id: string) => void }
         <div className="min-w-0">
           <p className="text-body-sm text-on-surface-variant">{longDate(today)}</p>
           <p className="mt-1 truncate text-headline text-on-surface">
-            {greeting}, {s.profile.name || "Pengguna"}
+            {greeting}{s.profile.name ? `, ${s.profile.name}` : ""}
           </p>
         </div>
         <div className="lg:hidden">
@@ -40,10 +40,7 @@ export default function Today({ setActive }: { setActive: (id: string) => void }
         {s.txs.length === 0 && (
           <section className="flex items-center gap-3 rounded-large bg-warning-container p-4">
             <Icon name="info" className="text-warning" />
-            <p className="flex-1 text-body-sm text-on-surface">Belum ada data. Tambah transaksi lewat tombol +, atau coba dengan data contoh.</p>
-            <Action label="Muat data contoh" onClick={loadSample} className="rounded-full bg-primary-container px-3 py-2 text-label text-primary">
-              Data contoh
-            </Action>
+            <p className="flex-1 text-body-sm text-on-surface">Belum ada data. Tambah transaksi lewat tombol +.</p>
           </section>
         )}
 

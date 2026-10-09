@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Action, Icon, inputCls, PrimaryButton } from "./ui";
 
 export function Login({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState("sumbul");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
@@ -47,13 +47,13 @@ export function Login({ onLogin }: { onLogin: () => void }) {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="mb-1 block text-label-sm text-on-surface-variant">Email</label>
+            <label className="mb-1 block text-label-sm text-on-surface-variant">Username</label>
             <input
               type="text"
               className={inputCls}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="sumbul"
+              placeholder="Username"
               required
             />
           </div>

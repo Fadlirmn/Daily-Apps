@@ -76,7 +76,7 @@ export const uid = () =>
     : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
 export function fmt(n: number, signed = false) {
-  const cur = state.profile.currency;
+  const cur = state.profile.currency || "IDR";
   const locale = cur === "IDR" ? "id-ID" : cur === "EUR" ? "de-DE" : "en-US";
   const s = new Intl.NumberFormat(locale, {
     style: "currency",
@@ -92,21 +92,15 @@ export function short(n: number) {
 function defaults(): State {
   return {
     profile: {
-      name: "Pengguna",
+      name: "",
       email: "",
       currency: "IDR",
-      monthlyIncome: 8000000,
-      wealthGoal: 30,
+      monthlyIncome: 0,
+      wealthGoal: 0,
       startBalance: 0,
     },
     txs: [],
-    categories: [
-      { id: "c1", name: "makanan", budgetLimit: 1800000 },
-      { id: "c2", name: "transportasi", budgetLimit: 900000 },
-      { id: "c3", name: "hiburan", budgetLimit: 500000 },
-      { id: "c4", name: "belanja", budgetLimit: 1200000 },
-      { id: "c5", name: "tagihan", budgetLimit: 1000000 },
-    ],
+    categories: [],
     goals: [],
     fixed: [],
     tasks: [],
@@ -133,18 +127,29 @@ export function useStore(): State {
   );
 }
 
-// Fetch initial data from backend API
-async function migrateLocalStorageOnce() {
-  const old = localStorage.getItem("arunika:v1");
-  if (old && !localStorage.getItem("arunika_migrated")) {
-    try {
-      const parsed = JSON.parse(old);
-      const token = localStorage.getItem("arunika_token");
-      if (token) {
-        // Push items to backend if needed, or just let backend serve defaults/synced data
-        localStorage.setItem("arunika_migrated", "true");
-      }
-    } catch {}
+let profileSaveTimer: number | null = null;
+
+async function syncProfileToBackend(profile: Profile) {
+  const token = localStorage.getItem("arunika_token");
+  if (!token) return;
+  try {
+    await fetch("/api/profile", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: profile.name,
+        email: profile.email,
+        monthly_income: profile.monthlyIncome,
+        wealth_goal: profile.wealthGoal,
+        currency: profile.currency,
+        start_balance: profile.startBalance,
+      }),
+    });
+  } catch (err) {
+    console.error("Failed to save profile:", err);
   }
 }
 
@@ -152,7 +157,6 @@ export async function fetchBackendData() {
   const token = localStorage.getItem("arunika_token");
   if (!token) return;
 
-  await migrateLocalStorageOnce();
   const headers = { Authorization: `Bearer ${token}` };
 
   try {
@@ -178,17 +182,18 @@ export async function fetchBackendData() {
 
     set((s) => ({
       ...s,
-      profile: profileData ? {
-        name: profileData.name || s.profile.name,
-        email: profileData.email || "",
-        currency: ["IDR","USD","EUR"].includes(profileData.currency) ? profileData.currency : s.profile.currency,
-        monthlyIncome: Number(profileData.monthly_income ?? s.profile.monthlyIncome),
-        wealthGoal: Number(profileData.wealth_goal ?? s.profile.wealthGoal),
-        startBalance: Number(profileData.start_balance ?? s.profile.startBalance),
-      } : s.profile,
+      profile: {
+        ...s.profile,
+        name: profileData?.name ?? s.profile.name,
+        email: profileData?.email ?? s.profile.email,
+        monthlyIncome: profileData?.monthly_income ?? s.profile.monthlyIncome,
+        wealthGoal: profileData?.wealth_goal ?? s.profile.wealthGoal,
+        currency: profileData?.currency ?? s.profile.currency,
+        startBalance: profileData?.start_balance ?? s.profile.startBalance,
+      },
       txs: txs.map((t: any) => ({
         id: t.id,
-        type: t.amount >= 0 ? "expense" : "expense", // mapped accordingly
+        type: t.amount >= 0 ? "expense" : "expense",
         category: t.category_name,
         amount: Math.abs(t.amount),
         description: t.description,
@@ -200,7 +205,7 @@ export async function fetchBackendData() {
       fixed: fixed.map((f: any) => ({ id: f.id, name: f.name, amount: Number(f.amount), period: "bulanan", isActive: f.is_active })),
       tasks: tasks.map((t: any) => ({ id: t.id, title: t.title, time: t.time || "", tag: t.tag || "Pribadi", date: t.created_at ? t.created_at.slice(0, 10) : todayStr(), done: t.done })),
       schedules: schedules.map((sc: any) => ({ id: sc.id, time: sc.time, title: sc.title, meta: sc.meta || "", date: sc.created_at ? sc.created_at.slice(0, 10) : todayStr() })),
-      habits: habits.map((h: any) => ({ id: h.id, title: h.title, target: 8, unit: "gelas", log: {} })),
+      habits: habits.map((h: any) => ({ id: h.id, title: h.title, target: h.progress || 8, unit: h.meta || "gelas", log: {} })),
     }));
   } catch (err) {
     console.error("Failed to fetch backend data:", err);
@@ -346,43 +351,19 @@ export async function deleteFixed(id: string) {
   set((s) => ({ ...s, fixed: s.fixed.filter((f) => f.id !== id) }));
 }
 
-let profileTimer: ReturnType<typeof setTimeout> | null = null;
-let profilePending: Partial<Profile> | null = null;
-
-export async function setProfile(p: Partial<Profile>, opts: { immediate?: boolean } = {}) {
-  set((s) => ({ ...s, profile: { ...s.profile, ...p } }));
-  profilePending = { ...(profilePending || {}), ...p };
-  const persist = async () => {
-    const body = profilePending; profilePending = null; profileTimer = null;
-    if (!body) return;
-    try {
-      const res = await apiCall("/api/profile", "PUT", {
-        ...(body.name !== undefined ? { name: body.name } : {}),
-        ...(body.email !== undefined ? { email: body.email } : {}),
-        ...(body.currency !== undefined ? { currency: body.currency } : {}),
-        ...(body.monthlyIncome !== undefined ? { monthly_income: body.monthlyIncome } : {}),
-        ...(body.wealthGoal !== undefined ? { wealth_goal: body.wealthGoal } : {}),
-        ...(body.startBalance !== undefined ? { start_balance: body.startBalance } : {}),
-      });
-      set((s) => ({
-        ...s,
-        profile: {
-          name: res.name ?? s.profile.name,
-          email: res.email ?? s.profile.email,
-          currency: ["IDR","USD","EUR"].includes(res.currency) ? res.currency : s.profile.currency,
-          monthlyIncome: Number(res.monthly_income ?? s.profile.monthlyIncome),
-          wealthGoal: Number(res.wealth_goal ?? s.profile.wealthGoal),
-          startBalance: Number(res.start_balance ?? s.profile.startBalance),
-        },
-      }));
-    } catch (e) { console.error("setProfile persist failed:", e); if (opts.immediate) throw e; }
-  };
-  if (opts.immediate) {
-    if (profileTimer) clearTimeout(profileTimer);
-    await persist();
-  } else if (!profileTimer) {
-    profileTimer = setTimeout(persist, 400);
-  }
+export async function setProfile(p: Partial<Profile>, immediate = false) {
+  set((s) => {
+    const updated = { ...s.profile, ...p };
+    if (profileSaveTimer) window.clearTimeout(profileSaveTimer);
+    if (immediate) {
+      syncProfileToBackend(updated);
+    } else {
+      profileSaveTimer = window.setTimeout(() => {
+        syncProfileToBackend(updated);
+      }, 400);
+    }
+    return { ...s, profile: updated };
+  });
 }
 
 export async function addTask(t: Omit<Task, "id" | "done">) {
@@ -429,7 +410,7 @@ export async function deleteSchedule(id: string) {
 
 export async function addHabit(h: Omit<Habit, "id" | "log">) {
   try {
-    const res = await apiCall("/api/habits", "POST", { title: h.title, icon: "water_drop", meta: h.unit, progress: 0, done: false });
+    const res = await apiCall("/api/habits", "POST", { title: h.title, icon: "water_drop", meta: h.unit, progress: h.target, done: false });
     set((s) => ({ ...s, habits: [...s.habits, { ...h, id: res.id, log: {} }] }));
   } catch {
     set((s) => ({ ...s, habits: [...s.habits, { ...h, id: uid(), log: {} }] }));
@@ -494,9 +475,7 @@ export function csvFor(txs: Tx[]): string {
   ].join("\n");
 }
 
-export function loadSample() {
-  // Sample handled by backend or local defaults
-}
+export function loadSample() {}
 
 export const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
@@ -506,7 +485,7 @@ export function daysInMonth(d: Date) {
 
 export function calc(s: State, now = new Date()) {
   const p = s.profile;
-  const spendPct = (100 - p.wealthGoal) / 100;
+  const spendPct = p.monthlyIncome > 0 ? (100 - p.wealthGoal) / 100 : 1;
   const dailyBudget = Math.round((p.monthlyIncome * spendPct) / 30);
   const monthlyBudget = Math.round(p.monthlyIncome * spendPct);
   const dim = daysInMonth(now);
@@ -524,7 +503,7 @@ export function calc(s: State, now = new Date()) {
   const spendableToday = Math.max(Math.round(dailyBudget - fixedDaily - todaySpend), 0);
   const spendableWeek = Math.max(Math.round((dailyBudget - fixedDaily) * 7 - weekSpend), 0);
   const spendableMonth = Math.max(Math.round(monthlyBudget - fixedDaily * dim - monthSpend), 0);
-  const score = Math.round(Math.min(spendableMonth / Math.max(monthlyBudget, 1), 1) * 100);
+  const score = monthlyBudget > 0 ? Math.round(Math.min(spendableMonth / Math.max(monthlyBudget, 1), 1) * 100) : 100;
   const balance =
     p.startBalance +
     sum(s.txs.filter((t) => t.type === "income").map((t) => t.amount)) -
