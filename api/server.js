@@ -62,29 +62,37 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 
 app.put('/api/profile', authenticateToken, async (req, res) => {
   try {
-    const { name, email, currency, monthly_income, wealth_goal, start_balance } = req.body;
-    const cur = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.userId]);
-    if (cur.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    const u = cur.rows[0];
-    const nName = name !== undefined ? String(name) : u.name;
-    const nEmail = email !== undefined ? String(email) : u.email;
-    const nCur = currency !== undefined ? String(currency) : (u.currency || 'IDR');
-    const nInc = monthly_income !== undefined ? Number(monthly_income) : Number(u.monthly_income);
-    const nGoal = wealth_goal !== undefined ? Number(wealth_goal) : Number(u.wealth_goal);
-    const nBal = start_balance !== undefined ? Number(start_balance) : Number(u.start_balance ?? 0);
-    if (!['IDR','USD','EUR'].includes(nCur)) return res.status(400).json({ error: 'Invalid currency' });
-    if (!Number.isFinite(nInc) || nInc < 0) return res.status(400).json({ error: 'Invalid monthly_income' });
-    if (!Number.isFinite(nGoal) || nGoal < 0 || nGoal > 100) return res.status(400).json({ error: 'Invalid wealth_goal' });
-    if (!Number.isFinite(nBal)) return res.status(400).json({ error: 'Invalid start_balance' });
-    if (nEmail && nEmail !== u.email) {
-      const dup = await pool.query('SELECT id FROM users WHERE email = $1 AND id <> $2', [nEmail, req.user.userId]);
-      if (dup.rows.length > 0) return res.status(409).json({ error: 'Email already in use' });
-    }
+    const { name, email, monthly_income, wealth_goal, currency, start_balance } = req.body;
     const result = await pool.query(
-      'UPDATE users SET name=$1, email=$2, currency=$3, monthly_income=$4, wealth_goal=$5, start_balance=$6 WHERE id=$7 RETURNING id, email, name, monthly_income, wealth_goal, currency, start_balance, created_at',
-      [nName, nEmail, nCur, Math.round(nInc), Math.round(nGoal), Math.round(nBal), req.user.userId]
+      `UPDATE users SET 
+        name = COALESCE($1, name),
+        email = COALESCE($2, email),
+        monthly_income = COALESCE($3, monthly_income),
+        wealth_goal = COALESCE($4, wealth_goal),
+        currency = COALESCE($5, currency),
+        start_balance = COALESCE($6, start_balance)
+       WHERE id = $7 RETURNING id, email, name, monthly_income, wealth_goal, currency, start_balance`,
+      [name, email, monthly_income, wealth_goal, currency, start_balance, req.user.userId]
     );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/password', authenticateToken, async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Password lama dan baru wajib diisi' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Password baru minimal 6 karakter' });
+  try {
+    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.userId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
+    const valid = await bcrypt.compare(oldPassword, result.rows[0].password_hash);
+    if (!valid) return res.status(401).json({ error: 'Password lama salah' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.userId]);
+    res.json({ success: true, message: 'Password berhasil diganti' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

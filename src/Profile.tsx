@@ -21,6 +21,27 @@ export default function Profile() {
   const [fError, setFError] = useState("");
   const [data, setData] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwMsg, setPwMsg] = useState("");
+  const [pwErr, setPwErr] = useState("");
+
+  async function changePassword() {
+    setPwMsg(""); setPwErr("");
+    if (!oldPw || !newPw) return setPwErr("Isi password lama dan baru.");
+    if (newPw.length < 6) return setPwErr("Password baru minimal 6 karakter.");
+    try {
+      const res = await fetch("/api/password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("arunika_token")}` },
+        body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Gagal ganti password.");
+      setPwMsg("Password berhasil diganti.");
+      setOldPw(""); setNewPw("");
+    } catch (e: any) { setPwErr(e.message); }
+  }
 
   // sinkronkan draf saat profil di store berubah (impor, reset)
   useEffect(() => setDraft(s.profile), [s.profile]);
@@ -87,6 +108,25 @@ export default function Profile() {
             <Field label="Email">
               <input id="p-email" type="email" className={inputCls} value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
             </Field>
+          </section>
+
+          <section className="space-y-4 rounded-extra bg-surface-container p-5">
+            <div className="flex items-center gap-2 text-primary">
+              <Icon name="lock" className="text-icon-sm" />
+              <p className="text-title">Ganti Password</p>
+            </div>
+            <Field label="Password lama">
+              <input id="p-oldpw" type="password" className={inputCls} value={oldPw} onChange={(e) => setOldPw(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+            </Field>
+            <Field label="Password baru (min. 6 karakter)">
+              <input id="p-newpw" type="password" className={inputCls} value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+            </Field>
+            {pwErr && <p role="alert" className="text-body-sm text-expense">{pwErr}</p>}
+            {pwMsg && <p role="status" className="text-body-sm text-income">{pwMsg}</p>}
+            <Action label="Ganti password" onClick={changePassword} className="flex items-center justify-center gap-2 rounded-full bg-secondary-container py-3 text-label text-secondary">
+              <Icon name="key" className="text-icon-sm" />
+              Ganti password
+            </Action>
           </section>
 
           <section className="space-y-4 rounded-extra bg-surface-container p-5">

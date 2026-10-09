@@ -39,6 +39,60 @@ function buildRange(p: Period, off: number): { title: string; buckets: Bucket[] 
 
 const inRange = (t: Tx, b: Bucket[]) => t.date >= b[0].from && t.date <= b[b.length - 1].to;
 
+function TrendLine({ series, labels, fmtFn }: { series: number[]; labels: string[]; fmtFn: (v: number) => string }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 600, H = 180, PAD = 28;
+  const max = Math.max(...series, 1);
+  const n = series.length;
+  const x = (i: number) => n <= 1 ? W / 2 : PAD + (i / (n - 1)) * (W - PAD * 2);
+  const y = (v: number) => H - PAD - (v / max) * (H - PAD * 2);
+  const pts = series.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const area = `${PAD},${H - PAD} ${pts} ${x(n - 1)},${H - PAD}`;
+  const step = Math.max(1, Math.ceil(n / 8));
+  return (
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Tren pengeluaran interaktif"
+        onMouseLeave={() => setHover(null)}
+      >
+        <defs>
+          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="var(--color-primary)" stopOpacity="0.03" />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75, 1].map((f) => (
+          <line key={f} x1={PAD} x2={W - PAD} y1={H - PAD - f * (H - PAD * 2)} y2={H - PAD - f * (H - PAD * 2)} stroke="var(--color-outline-variant)" strokeDasharray="4 4" strokeWidth="1" />
+        ))}
+        <polygon points={area} fill="url(#trendFill)" />
+        <polyline points={pts} fill="none" stroke="var(--color-primary)" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {series.map((v, i) => (
+          <g key={i}>
+            <rect x={x(i) - (W / n / 2)} y={0} width={W / n} height={H} fill="transparent"
+              onMouseEnter={() => setHover(i)} />
+            {(hover === i || (hover === null && v === max && v > 0)) && (
+              <circle cx={x(i)} cy={y(v)} r={hover === i ? 6 : 4} fill="var(--color-primary)" stroke="var(--color-surface)" strokeWidth="2" />
+            )}
+            {hover === i && (
+              <line x1={x(i)} x2={x(i)} y1={PAD - 8} y2={H - PAD} stroke="var(--color-secondary)" strokeDasharray="3 3" strokeWidth="1.5" />
+            )}
+          </g>
+        ))}
+        {labels.map((l, i) => i % step === 0 && (
+          <text key={i} x={x(i)} y={H - 8} textAnchor="middle" fontSize="11" fill="var(--color-on-surface-variant)">{l}</text>
+        ))}
+      </svg>
+      {hover !== null && (
+        <div className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-large bg-surface-container-high px-3 py-2 shadow-lg ring-1 ring-outline-variant"
+          style={{ left: `${(x(hover) / W) * 100}%`, top: 0 }}>
+          <p className="text-label-sm text-on-surface-variant">{labels[hover]}</p>
+          <p className="money text-label text-primary">{fmtFn(series[hover])}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Donut({ data }: { data: [string, number][] }) {
   const total = sum(data.map((d) => d[1]));
   const r = 40;
@@ -158,6 +212,9 @@ export default function Report() {
             ))}
           </div>
           <p className="mt-3 text-label-sm text-on-surface-variant">Tertinggi {short(max === 1 && !series.some(Boolean) ? 0 : max)} per {period === "Tahun" ? "bulan" : "hari"}</p>
+          <div className="mt-4 border-t border-outline-variant pt-4">
+            <TrendLine series={series} labels={buckets.map((b) => b.label)} fmtFn={(v) => fmt(v)} />
+          </div>
         </section>
 
         <section className="rounded-large bg-surface-container p-4">
