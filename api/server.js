@@ -4,18 +4,29 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 
+// Fail-fast: tanpa secret eksplisit, server menolak start. Mencegah deploy
+// diam-diam dengan JWT_SECRET/POSTGRES_PASSWORD default yang ter-commit di repo.
+const REQUIRED_ENV = ['JWT_SECRET', 'POSTGRES_PASSWORD'];
+const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+if (missing.length) {
+  console.error(`Fatal: environment variable wajib belum di-set: ${missing.join(', ')}`);
+  console.error('Lihat .env.example untuk daftar variabel yang dibutuhkan.');
+  process.exit(1);
+}
+
 const { Pool } = pg;
 const pool = new Pool({
   host: process.env.POSTGRES_HOST || 'postgres',
   port: process.env.POSTGRES_PORT || 5432,
   database: process.env.POSTGRES_DB || 'fintrack',
   user: process.env.POSTGRES_USER || 'fintrack',
-  password: process.env.POSTGRES_PASSWORD || 'fintrack_secret',
+  password: process.env.POSTGRES_PASSWORD,
 });
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkeychangeit';
+const JWT_SECRET = process.env.JWT_SECRET;
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
 const app = express();
-app.use(cors());
+app.use(cors(ALLOWED_ORIGINS.length ? { origin: ALLOWED_ORIGINS } : {}));
 app.use(express.json());
 
 const authenticateToken = (req, res, next) => {
@@ -98,9 +109,25 @@ app.put('/api/password', authenticateToken, async (req, res) => {
   }
 });
 
-const resources = ['transactions', 'categories', 'fixed_expenses', 'budgets', 'goals', 'tasks', 'habits', 'schedules'];
+// Whitelist eksplisit kolom yang boleh ditulis per resource lewat generic CRUD.
+// Mencegah request body mengontrol nama kolom/identifier SQL (SQL injection via
+// identifier) — sebelumnya `Object.keys(req.body)` di-interpolasi langsung ke
+// query string tanpa validasi.
+const RESOURCE_COLUMNS = {
+  transactions: ['type', 'category_name', 'amount', 'description', 'source'],
+  categories: ['name', 'budget_limit'],
+  fixed_expenses: ['name', 'amount', 'is_active'],
+  budgets: [],
+  goals: ['title', 'target', 'saved', 'date_label'],
+  tasks: ['title', 'time', 'tag', 'done'],
+  habits: ['title', 'icon', 'meta', 'progress', 'done'],
+  schedules: ['time', 'title', 'meta'],
+};
+const resources = Object.keys(RESOURCE_COLUMNS);
 
 resources.forEach(resource => {
+  const allowedColumns = new Set(RESOURCE_COLUMNS[resource]);
+
   app.get(`/api/${resource}`, authenticateToken, async (req, res) => {
     try {
       const result = await pool.query(`SELECT * FROM ${resource} WHERE user_id = $1`, [req.user.userId]);
@@ -112,9 +139,9 @@ resources.forEach(resource => {
 
   app.post(`/api/${resource}`, authenticateToken, async (req, res) => {
     try {
-      const keys = Object.keys(req.body).filter(k => k !== 'id' && k !== 'user_id' && k !== 'created_at');
+      const keys = Object.keys(req.body).filter(k => allowedColumns.has(k));
       const values = keys.map(k => req.body[k]);
-      
+
       if (keys.length === 0) {
         const result = await pool.query(
           `INSERT INTO ${resource} (user_id) VALUES ($1) RETURNING *`,
@@ -125,7 +152,7 @@ resources.forEach(resource => {
 
       const placeholders = keys.map((_, i) => `$${i + 2}`).join(', ');
       const columns = keys.join(', ');
-      
+
       const query = `INSERT INTO ${resource} (user_id, ${columns}) VALUES ($1, ${placeholders}) RETURNING *`;
       const result = await pool.query(query, [req.user.userId, ...values]);
       res.status(201).json(result.rows[0]);
@@ -137,8 +164,8 @@ resources.forEach(resource => {
   app.put(`/api/${resource}/:id`, authenticateToken, async (req, res) => {
     try {
       const { id } = req.params;
-      const keys = Object.keys(req.body).filter(k => k !== 'id' && k !== 'user_id' && k !== 'created_at');
-      if (keys.length === 0) return res.status(400).json({ error: 'No fields to update' });
+      const keys = Object.keys(req.body).filter(k => allowedColumns.has(k));
+      if (keys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
 
       const setClause = keys.map((k, i) => `${k} = $${i + 3}`).join(', ');
       const values = keys.map(k => req.body[k]);

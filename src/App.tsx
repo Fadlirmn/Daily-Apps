@@ -7,7 +7,7 @@ import Report from "./Report";
 import Today from "./Today";
 import TxSheet from "./TxSheet";
 import { Login } from "./Login";
-import { deleteTx, fetchBackendData, fmt, useStore } from "./store";
+import { deleteTx, fetchBackendData, fmt, onSessionExpired, useStore } from "./store";
 import { Action, Icon, NavContext, ProfileChip } from "./ui";
 
 const NAV = [
@@ -20,23 +20,29 @@ const MOBILE_NAV = NAV;
 
 export default function App() {
   const [authed, setAuthed] = useState(() => localStorage.getItem("arunika_auth") === "true");
-  useStore(); // re-render saat data berubah
+  const s = useStore(); // re-render saat data berubah
   const [active, setActive] = useState("today");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<{ id: string; text: string } | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const timer = useRef<number>(0);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
-  function handleLogout() {
+  function handleLogout(expired = false) {
     localStorage.removeItem("arunika_auth");
     localStorage.removeItem("arunika_token");
     localStorage.removeItem("arunika:v1");
     setAuthed(false);
+    setSessionExpired(expired);
   }
 
+  // Dengarkan sesi berakhir (401/403 dari server) supaya bukan error diam-diam —
+  // logout otomatis dan beri tahu user, daripada meninggalkan app "nyangkut" offline.
+  useEffect(() => onSessionExpired(() => handleLogout(true)), []);
+
   if (!authed) {
-    return <Login onLogin={() => { setAuthed(true); void fetchBackendData(); }} />;
+    return <Login onLogin={() => { setAuthed(true); setSessionExpired(false); void fetchBackendData(); }} sessionExpired={sessionExpired} />;
   }
 
   function onSaved(id: string, isNew: boolean) {
@@ -88,7 +94,7 @@ export default function App() {
           </div>
           <Action
             label="Keluar aplikasi"
-            onClick={handleLogout}
+            onClick={() => handleLogout()}
             className="flex items-center justify-center gap-2 rounded-full bg-surface-container-high py-3 text-label text-expense hover:bg-expense/10"
           >
             <Icon name="logout" className="text-icon-sm" />
@@ -108,7 +114,7 @@ export default function App() {
             <div className="px-4 lg:hidden pb-10">
               <Action
                 label="Keluar aplikasi"
-                onClick={handleLogout}
+                onClick={() => handleLogout()}
                 className="flex items-center justify-center gap-2 rounded-full bg-surface-container-high py-4 text-label text-expense"
               >
                 <Icon name="logout" className="text-icon-sm" />
@@ -153,6 +159,13 @@ export default function App() {
               Urungkan
             </Action>
           )}
+        </div>
+      )}
+
+      {s.syncError && (
+        <div role="alert" className="absolute top-4 left-4 right-4 z-40 flex items-center gap-3 rounded-medium bg-warning-container p-4 text-warning lg:left-1/2 lg:right-auto lg:w-96 lg:-translate-x-1/2">
+          <Icon name="cloud_off" className="text-icon-sm" />
+          <p className="flex-1 text-body-sm">{s.syncError}</p>
         </div>
       )}
 

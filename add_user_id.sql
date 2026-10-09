@@ -1,3 +1,9 @@
+-- MIGRASI HISTORIS — sudah pernah dijalankan di DB produksi/dev lama.
+-- JANGAN jalankan ulang tanpa mengganti UUID di bawah ke user_id yang valid
+-- di environment tujuan. UUID ini adalah akun nyata, bukan placeholder.
+-- Untuk setup baru dari nol, skema sudah lengkap di db/schema.sql — file ini
+-- tidak diperlukan lagi.
+--
 -- Add user_id to budgets, goals, tasks, habits, schedules
 ALTER TABLE budgets ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;
 ALTER TABLE goals ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE;

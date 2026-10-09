@@ -67,7 +67,7 @@ export default function TxSheet({
     setQuick("");
   }
 
-  function save() {
+  async function save() {
     const n = Number(amount.replace(/\D/g, ""));
     if (!n || n <= 0) return setError("Nominal harus lebih dari 0.");
     if (!date) return setError("Tanggal wajib diisi.");
@@ -79,10 +79,11 @@ export default function TxSheet({
       date,
     };
     if (initial) {
-      updateTx(initial.id, data);
+      await updateTx(initial.id, data);
       onSaved?.(initial.id, false);
     } else {
-      onSaved?.(addTx(data), true);
+      const id = await addTx(data);
+      onSaved?.(id, true);
     }
     close();
   }

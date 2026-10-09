@@ -59,11 +59,24 @@ Buka `http://localhost:8443` (atau sesuai `$PORT`). Hot reload aktif.
 
 ## Docker
 
+### Setup environment (wajib sebelum compose up)
+
+Backend ( `api/server.js` ) menolak start tanpa `JWT_SECRET` dan `POSTGRES_PASSWORD` di-set eksplisit — tidak ada default rahasia yang ter-commit di repo.
+
+```bash
+cp .env.example .env
+# isi POSTGRES_PASSWORD dan JWT_SECRET, misal:
+#   openssl rand -hex 24   # untuk POSTGRES_PASSWORD
+#   openssl rand -hex 32   # untuk JWT_SECRET
+```
+
 ### Via Docker Compose (disarankan)
 
 ```bash
 docker compose up --build -d
 ```
+
+Pada first boot, `db/schema.sql` otomatis dijalankan untuk membuat tabel-tabel yang dibutuhkan (lihat `docker-entrypoint-initdb.d`).
 
 Buka `http://localhost:8099`.
 

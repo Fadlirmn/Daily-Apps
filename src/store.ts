@@ -45,6 +45,8 @@ export type State = {
   tasks: Task[];
   schedules: Schedule[];
   habits: Habit[];
+  /** Pesan sinkronisasi terakhir yang gagal (bukan karena sesi berakhir). UI menampilkan ini sebagai peringatan. */
+  syncError: string | null;
 };
 
 /* ---------- tanggal ---------- */
@@ -106,6 +108,7 @@ function defaults(): State {
     tasks: [],
     schedules: [],
     habits: [],
+    syncError: null,
   };
 }
 
@@ -127,29 +130,41 @@ export function useStore(): State {
   );
 }
 
+/** Dipanggil saat token expired/invalid (401/403). Dengarkan di App.tsx untuk logout paksa. */
+const sessionExpiredListeners = new Set<() => void>();
+export function onSessionExpired(cb: () => void): () => void {
+  sessionExpiredListeners.add(cb);
+  return () => sessionExpiredListeners.delete(cb);
+}
+function notifySessionExpired() {
+  sessionExpiredListeners.forEach((l) => l());
+}
+
+function setSyncError(msg: string | null) {
+  set((s) => ({ ...s, syncError: msg }));
+}
+
 let profileSaveTimer: number | null = null;
 
 async function syncProfileToBackend(profile: Profile) {
-  const token = localStorage.getItem("arunika_token");
-  if (!token) return;
   try {
-    await fetch("/api/profile", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        name: profile.name,
-        email: profile.email,
-        monthly_income: profile.monthlyIncome,
-        wealth_goal: profile.wealthGoal,
-        currency: profile.currency,
-        start_balance: profile.startBalance,
-      }),
+    await apiCall("/api/profile", "PUT", {
+      name: profile.name,
+      email: profile.email,
+      monthly_income: profile.monthlyIncome,
+      wealth_goal: profile.wealthGoal,
+      currency: profile.currency,
+      start_balance: profile.startBalance,
     });
+    setSyncError(null);
   } catch (err) {
+    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      notifySessionExpired();
+      return;
+    }
     console.error("Failed to save profile:", err);
+    setSyncError("Profil belum tersimpan ke server.");
+    throw err;
   }
 }
 
@@ -171,17 +186,23 @@ export async function fetchBackendData() {
       fetch("/api/habits", { headers }),
     ]);
 
+    if ([profileRes, txsRes, catRes, goalsRes, fixedRes, tasksRes, schedRes, habitsRes].some((r) => r.status === 401 || r.status === 403)) {
+      notifySessionExpired();
+      return;
+    }
+
     const profileData = profileRes.ok ? await profileRes.json() : null;
     const txs = txsRes.ok ? await txsRes.json() : [];
     const categories = catRes.ok ? await catRes.json() : [];
     const goals = goalsRes.ok ? await goalsRes.json() : [];
     const fixed = fixedRes.ok ? await fixedRes.json() : [];
     const tasks = tasksRes.ok ? await tasksRes.json() : [];
-    const schedules = schedRes.ok ? await schedulesRes.json() : [];
+    const schedules = schedRes.ok ? await schedRes.json() : [];
     const habits = habitsRes.ok ? await habitsRes.json() : [];
 
     set((s) => ({
       ...s,
+      syncError: null,
       profile: {
         ...s.profile,
         name: profileData?.name ?? s.profile.name,
@@ -193,9 +214,9 @@ export async function fetchBackendData() {
       },
       txs: txs.map((t: any) => ({
         id: t.id,
-        type: t.amount >= 0 ? "expense" : "expense",
+        type: t.type === "income" ? "income" : "expense",
         category: t.category_name,
-        amount: Math.abs(t.amount),
+        amount: Math.abs(Number(t.amount)),
         description: t.description,
         date: t.created_at ? t.created_at.slice(0, 10) : todayStr(),
         createdAt: new Date(t.created_at).getTime(),
@@ -209,9 +230,21 @@ export async function fetchBackendData() {
     }));
   } catch (err) {
     console.error("Failed to fetch backend data:", err);
+    setSyncError("Gagal memuat data dari server. Menampilkan data lokal.");
   }
 }
 
+class ApiError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/** Wrapper terpusat untuk semua panggilan API otentikasi. 401/403 memicu
+ * sesi-berakhir (logout paksa), error lain dilempar sebagai ApiError untuk
+ * ditangani pemanggil (fallback lokal + tandai syncError). */
 async function apiCall(endpoint: string, method: string, body?: any) {
   const token = localStorage.getItem("arunika_token");
   const res = await fetch(endpoint, {
@@ -222,35 +255,74 @@ async function apiCall(endpoint: string, method: string, body?: any) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error("API request failed");
+  if (res.status === 401 || res.status === 403) {
+    notifySessionExpired();
+    throw new ApiError(res.status, "Sesi berakhir, silakan masuk kembali.");
+  }
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new ApiError(res.status, text || "Permintaan API gagal.");
+  }
   return res.json();
+}
+
+/** Jalankan mutasi API; kalau sesi sudah ditangani (401/403), jangan jalankan
+ * fallback lokal — biarkan logout mengambil alih. Untuk error lain, jalankan
+ * fallback dan tandai syncError agar user tahu datanya belum tersinkron. */
+async function withFallback<T>(
+  call: () => Promise<T>,
+  fallback: () => T,
+  errorMsg: string,
+): Promise<T> {
+  try {
+    const result = await call();
+    setSyncError(null);
+    return result;
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+      throw err;
+    }
+    console.error(errorMsg, err);
+    setSyncError(errorMsg);
+    return fallback();
+  }
 }
 
 export const norm = (s: string) => s.trim().toLowerCase();
 
 export async function addTx(t: Omit<Tx, "id" | "createdAt">): Promise<string> {
   const cat = norm(t.category) || "uncategorized";
-  try {
-    const res = await apiCall("/api/transactions", "POST", {
-      category_name: cat,
-      amount: t.amount,
-      description: t.description,
-      source: "web",
-    });
-    const newTx: Tx = { ...t, category: cat, id: res.id, createdAt: Date.now() };
-    set((s) => ({ ...s, txs: [newTx, ...s.txs] }));
-    return res.id;
-  } catch {
-    const tx: Tx = { ...t, category: cat, id: uid(), createdAt: Date.now() };
-    set((s) => ({ ...s, txs: [...s.txs, tx] }));
-    return tx.id;
-  }
+  const localId = uid();
+  const id = await withFallback(
+    async () => {
+      const res = await apiCall("/api/transactions", "POST", {
+        type: t.type,
+        category_name: cat,
+        amount: t.amount,
+        description: t.description,
+        source: "web",
+      });
+      return res.id as string;
+    },
+    () => localId,
+    "Transaksi belum tersimpan ke server.",
+  );
+  const newTx: Tx = { ...t, category: cat, id, createdAt: Date.now() };
+  set((s) => ({ ...s, txs: [newTx, ...s.txs] }));
+  return id;
 }
 
 export async function updateTx(id: string, patch: Partial<Omit<Tx, "id" | "createdAt">>) {
-  try {
-    await apiCall(`/api/transactions/${id}`, "PUT", patch);
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/transactions/${id}`, "PUT", {
+      ...(patch.type ? { type: patch.type } : {}),
+      ...(patch.category ? { category_name: norm(patch.category) } : {}),
+      ...(patch.amount !== undefined ? { amount: patch.amount } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+    }),
+    () => null,
+    "Perubahan transaksi belum tersinkron ke server.",
+  );
   set((s) => ({
     ...s,
     txs: s.txs.map((t) =>
@@ -260,9 +332,11 @@ export async function updateTx(id: string, patch: Partial<Omit<Tx, "id" | "creat
 }
 
 export async function deleteTx(id: string) {
-  try {
-    await apiCall(`/api/transactions/${id}`, "DELETE");
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/transactions/${id}`, "DELETE"),
+    () => null,
+    "Hapus transaksi belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, txs: s.txs.filter((t) => t.id !== id) }));
 }
 
@@ -270,23 +344,28 @@ export async function addCategory(name: string, budgetLimit: number): Promise<st
   const n = norm(name);
   if (!n) return "Nama kategori wajib diisi.";
   if (state.categories.some((c) => c.name === n)) return "Kategori sudah ada.";
-  try {
-    const res = await apiCall("/api/categories", "POST", { name: n, budget_limit: budgetLimit });
-    set((s) => ({ ...s, categories: [...s.categories, { id: res.id, name: n, budgetLimit }] }));
-    return null;
-  } catch {
-    set((s) => ({ ...s, categories: [...s.categories, { id: uid(), name: n, budgetLimit }] }));
-    return null;
-  }
+  const localId = uid();
+  const id = await withFallback(
+    async () => {
+      const res = await apiCall("/api/categories", "POST", { name: n, budget_limit: budgetLimit });
+      return res.id as string;
+    },
+    () => localId,
+    "Kategori belum tersimpan ke server.",
+  );
+  set((s) => ({ ...s, categories: [...s.categories, { id, name: n, budgetLimit }] }));
+  return null;
 }
 
 export async function updateCategory(id: string, name: string, budgetLimit: number): Promise<string | null> {
   const n = norm(name);
   if (!n) return "Nama kategori wajib diisi.";
   if (state.categories.some((c) => c.id !== id && c.name === n)) return "Kategori sudah ada.";
-  try {
-    await apiCall(`/api/categories/${id}`, "PUT", { name: n, budget_limit: budgetLimit });
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/categories/${id}`, "PUT", { name: n, budget_limit: budgetLimit }),
+    () => null,
+    "Perubahan kategori belum tersinkron ke server.",
+  );
   set((s) => {
     const old = s.categories.find((c) => c.id === id);
     return {
@@ -299,55 +378,73 @@ export async function updateCategory(id: string, name: string, budgetLimit: numb
 }
 
 export async function deleteCategory(id: string) {
-  try {
-    await apiCall(`/api/categories/${id}`, "DELETE");
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/categories/${id}`, "DELETE"),
+    () => null,
+    "Hapus kategori belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, categories: s.categories.filter((c) => c.id !== id) }));
 }
 
 export async function addGoal(g: Omit<Goal, "id" | "saved">) {
-  try {
-    const res = await apiCall("/api/goals", "POST", { title: g.title, target: g.target, saved: 0, date_label: g.deadline || "Fleksibel" });
-    set((s) => ({ ...s, goals: [...s.goals, { ...g, id: res.id, saved: 0 }] }));
-  } catch {
-    set((s) => ({ ...s, goals: [...s.goals, { ...g, id: uid(), saved: 0 }] }));
-  }
+  const localId = uid();
+  const id = await withFallback(
+    async () => {
+      const res = await apiCall("/api/goals", "POST", { title: g.title, target: g.target, saved: 0, date_label: g.deadline || "Fleksibel" });
+      return res.id as string;
+    },
+    () => localId,
+    "Target belum tersimpan ke server.",
+  );
+  set((s) => ({ ...s, goals: [...s.goals, { ...g, id, saved: 0 }] }));
 }
 
 export async function updateGoal(id: string, patch: Partial<Goal>) {
-  try {
-    await apiCall(`/api/goals/${id}`, "PUT", { title: patch.title, target: patch.target, saved: patch.saved, date_label: patch.deadline });
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/goals/${id}`, "PUT", { title: patch.title, target: patch.target, saved: patch.saved, date_label: patch.deadline }),
+    () => null,
+    "Perubahan target belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }));
 }
 
 export async function deleteGoal(id: string) {
-  try {
-    await apiCall(`/api/goals/${id}`, "DELETE");
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/goals/${id}`, "DELETE"),
+    () => null,
+    "Hapus target belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, goals: s.goals.filter((g) => g.id !== id) }));
 }
 
 export async function addFixed(f: Omit<FixedExpense, "id" | "isActive">) {
-  try {
-    const res = await apiCall("/api/fixed_expenses", "POST", { name: f.name, amount: f.amount, is_active: true });
-    set((s) => ({ ...s, fixed: [...s.fixed, { ...f, id: res.id, isActive: true }] }));
-  } catch {
-    set((s) => ({ ...s, fixed: [...s.fixed, { ...f, id: uid(), isActive: true }] }));
-  }
+  const localId = uid();
+  const id = await withFallback(
+    async () => {
+      const res = await apiCall("/api/fixed_expenses", "POST", { name: f.name, amount: f.amount, is_active: true });
+      return res.id as string;
+    },
+    () => localId,
+    "Pengeluaran tetap belum tersimpan ke server.",
+  );
+  set((s) => ({ ...s, fixed: [...s.fixed, { ...f, id, isActive: true }] }));
 }
 
 export async function updateFixed(id: string, patch: Partial<FixedExpense>) {
-  try {
-    await apiCall(`/api/fixed_expenses/${id}`, "PUT", { name: patch.name, amount: patch.amount, is_active: patch.isActive });
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/fixed_expenses/${id}`, "PUT", { name: patch.name, amount: patch.amount, is_active: patch.isActive }),
+    () => null,
+    "Perubahan pengeluaran tetap belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, fixed: s.fixed.map((f) => (f.id === id ? { ...f, ...patch } : f)) }));
 }
 
 export async function deleteFixed(id: string) {
-  try {
-    await apiCall(`/api/fixed_expenses/${id}`, "DELETE");
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/fixed_expenses/${id}`, "DELETE"),
+    () => null,
+    "Hapus pengeluaran tetap belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, fixed: s.fixed.filter((f) => f.id !== id) }));
 }
 
@@ -356,10 +453,10 @@ export async function setProfile(p: Partial<Profile>, immediate = false) {
     const updated = { ...s.profile, ...p };
     if (profileSaveTimer) window.clearTimeout(profileSaveTimer);
     if (immediate) {
-      syncProfileToBackend(updated);
+      void syncProfileToBackend(updated);
     } else {
       profileSaveTimer = window.setTimeout(() => {
-        syncProfileToBackend(updated);
+        void syncProfileToBackend(updated);
       }, 400);
     }
     return { ...s, profile: updated };
@@ -367,60 +464,80 @@ export async function setProfile(p: Partial<Profile>, immediate = false) {
 }
 
 export async function addTask(t: Omit<Task, "id" | "done">) {
-  try {
-    const res = await apiCall("/api/tasks", "POST", { title: t.title, time: t.time, tag: t.tag, done: false });
-    set((s) => ({ ...s, tasks: [...s.tasks, { ...t, id: res.id, done: false }] }));
-  } catch {
-    set((s) => ({ ...s, tasks: [...s.tasks, { ...t, id: uid(), done: false }] }));
-  }
+  const localId = uid();
+  const id = await withFallback(
+    async () => {
+      const res = await apiCall("/api/tasks", "POST", { title: t.title, time: t.time, tag: t.tag, done: false });
+      return res.id as string;
+    },
+    () => localId,
+    "Tugas belum tersimpan ke server.",
+  );
+  set((s) => ({ ...s, tasks: [...s.tasks, { ...t, id, done: false }] }));
 }
 
 export async function toggleTask(id: string) {
   const task = state.tasks.find((t) => t.id === id);
   if (task) {
-    try {
-      await apiCall(`/api/tasks/${id}`, "PUT", { done: !task.done });
-    } catch {}
+    await withFallback(
+      () => apiCall(`/api/tasks/${id}`, "PUT", { done: !task.done }),
+      () => null,
+      "Perubahan tugas belum tersinkron ke server.",
+    );
   }
   set((s) => ({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) }));
 }
 
 export async function deleteTask(id: string) {
-  try {
-    await apiCall(`/api/tasks/${id}`, "DELETE");
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/tasks/${id}`, "DELETE"),
+    () => null,
+    "Hapus tugas belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }));
 }
 
 export async function addSchedule(x: Omit<Schedule, "id">) {
-  try {
-    const res = await apiCall("/api/schedules", "POST", { time: x.time, title: x.title, meta: x.meta });
-    set((s) => ({ ...s, schedules: [...s.schedules, { ...x, id: res.id }] }));
-  } catch {
-    set((s) => ({ ...s, schedules: [...s.schedules, { ...x, id: uid() }] }));
-  }
+  const localId = uid();
+  const id = await withFallback(
+    async () => {
+      const res = await apiCall("/api/schedules", "POST", { time: x.time, title: x.title, meta: x.meta });
+      return res.id as string;
+    },
+    () => localId,
+    "Jadwal belum tersimpan ke server.",
+  );
+  set((s) => ({ ...s, schedules: [...s.schedules, { ...x, id }] }));
 }
 
 export async function deleteSchedule(id: string) {
-  try {
-    await apiCall(`/api/schedules/${id}`, "DELETE");
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/schedules/${id}`, "DELETE"),
+    () => null,
+    "Hapus jadwal belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, schedules: s.schedules.filter((x) => x.id !== id) }));
 }
 
 export async function addHabit(h: Omit<Habit, "id" | "log">) {
-  try {
-    const res = await apiCall("/api/habits", "POST", { title: h.title, icon: "water_drop", meta: h.unit, progress: h.target, done: false });
-    set((s) => ({ ...s, habits: [...s.habits, { ...h, id: res.id, log: {} }] }));
-  } catch {
-    set((s) => ({ ...s, habits: [...s.habits, { ...h, id: uid(), log: {} }] }));
-  }
+  const localId = uid();
+  const id = await withFallback(
+    async () => {
+      const res = await apiCall("/api/habits", "POST", { title: h.title, icon: "water_drop", meta: h.unit, progress: h.target, done: false });
+      return res.id as string;
+    },
+    () => localId,
+    "Kebiasaan belum tersimpan ke server.",
+  );
+  set((s) => ({ ...s, habits: [...s.habits, { ...h, id, log: {} }] }));
 }
 
 export async function deleteHabit(id: string) {
-  try {
-    await apiCall(`/api/habits/${id}`, "DELETE");
-  } catch {}
+  await withFallback(
+    () => apiCall(`/api/habits/${id}`, "DELETE"),
+    () => null,
+    "Hapus kebiasaan belum tersinkron ke server.",
+  );
   set((s) => ({ ...s, habits: s.habits.filter((h) => h.id !== id) }));
 }
 

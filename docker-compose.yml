@@ -4,15 +4,16 @@ services:
     container_name: daily-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: fintrack
-      POSTGRES_USER: fintrack
-      POSTGRES_PASSWORD: fintrack_secret
+      POSTGRES_DB: ${POSTGRES_DB:-fintrack}
+      POSTGRES_USER: ${POSTGRES_USER:-fintrack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Wajib set POSTGRES_PASSWORD di .env — lihat .env.example}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     networks:
       - daily-net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fintrack -d fintrack"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-fintrack} -d ${POSTGRES_DB:-fintrack}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,10 +30,10 @@ services:
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_DB=fintrack
-      - POSTGRES_USER=fintrack
-      - POSTGRES_PASSWORD=fintrack_secret
-      - JWT_SECRET=supersecretkeychangeit
+      - POSTGRES_DB=${POSTGRES_DB:-fintrack}
+      - POSTGRES_USER=${POSTGRES_USER:-fintrack}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Wajib set POSTGRES_PASSWORD di .env — lihat .env.example}
+      - JWT_SECRET=${JWT_SECRET:?Wajib set JWT_SECRET di .env — lihat .env.example}
     networks:
       - daily-net
 

@@ -86,8 +86,8 @@ function CategorySheet({ cat, presetName, close }: { cat?: Category; presetName?
   const [name, setName] = useState(cat?.name ?? presetName ?? "");
   const [limit, setLimit] = useState(cat ? String(cat.budgetLimit) : "");
   const [error, setError] = useState("");
-  function save() {
-    const err = cat ? updateCategory(cat.id, name, num(limit)) : addCategory(name, num(limit));
+  async function save() {
+    const err = cat ? await updateCategory(cat.id, name, num(limit)) : await addCategory(name, num(limit));
     if (err) setError(err);
     else close();
   }

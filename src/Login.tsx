@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Action, Icon, inputCls, PrimaryButton } from "./ui";
 
-export function Login({ onLogin }: { onLogin: () => void }) {
+export function Login({ onLogin, sessionExpired = false }: { onLogin: () => void; sessionExpired?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(sessionExpired ? "Sesi berakhir. Silakan masuk kembali." : "");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
