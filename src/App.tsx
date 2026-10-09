@@ -6,6 +6,7 @@ import Profile from "./Profile";
 import Report from "./Report";
 import Today from "./Today";
 import TxSheet from "./TxSheet";
+import { Login } from "./Login";
 import { deleteTx, fmt, useStore } from "./store";
 import { Action, Icon, NavContext, ProfileChip } from "./ui";
 
@@ -18,13 +19,23 @@ const NAV = [
 const MOBILE_NAV = NAV;
 
 export default function App() {
-  useStore(); // re-render saat data berubah (format mata uang di header)
+  const [authed, setAuthed] = useState(() => localStorage.getItem("arunika_auth") === "true");
+  useStore(); // re-render saat data berubah
   const [active, setActive] = useState("today");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState<{ id: string; text: string } | null>(null);
   const timer = useRef<number>(0);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  function handleLogout() {
+    localStorage.removeItem("arunika_auth");
+    setAuthed(false);
+  }
+
+  if (!authed) {
+    return <Login onLogin={() => setAuthed(true)} />;
+  }
 
   function onSaved(id: string, isNew: boolean) {
     window.clearTimeout(timer.current);
@@ -69,8 +80,18 @@ export default function App() {
           Tambah transaksi
         </Action>
 
-        <div className="mt-auto flex justify-center border-t border-outline-variant py-5">
-          <ProfileChip active={active === "profile"} />
+        <div className="mt-auto flex flex-col gap-3 border-t border-outline-variant p-5">
+          <div className="flex justify-center">
+            <ProfileChip active={active === "profile"} />
+          </div>
+          <Action
+            label="Keluar aplikasi"
+            onClick={handleLogout}
+            className="flex items-center justify-center gap-2 rounded-full bg-surface-container-high py-3 text-label text-expense hover:bg-expense/10"
+          >
+            <Icon name="logout" className="text-icon-sm" />
+            Keluar
+          </Action>
         </div>
       </aside>
 
@@ -79,7 +100,21 @@ export default function App() {
         {active === "activity" && <Activity />}
         {active === "finance" && <Finance />}
         {active === "report" && <Report />}
-        {active === "profile" && <Profile />}
+        {active === "profile" && (
+          <div className="space-y-5">
+            <Profile />
+            <div className="px-4 lg:hidden pb-10">
+              <Action
+                label="Keluar aplikasi"
+                onClick={handleLogout}
+                className="flex items-center justify-center gap-2 rounded-full bg-surface-container-high py-4 text-label text-expense"
+              >
+                <Icon name="logout" className="text-icon-sm" />
+                Keluar
+              </Action>
+            </div>
+          </div>
+        )}
       </div>
 
       <nav className="absolute inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-outline-variant bg-nav px-2 pb-safe pt-2 lg:hidden">
