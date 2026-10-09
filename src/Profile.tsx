@@ -30,14 +30,23 @@ export default function Profile() {
   const previewMonthly = Math.round(draft.monthlyIncome * spendPct);
   const previewDaily = Math.round(previewMonthly / 30);
 
-  function save(e: React.FormEvent) {
+  async function save(e: React.FormEvent) {
     e.preventDefault();
     if (draft.monthlyIncome < 0) return setError("Target pemasukan tidak boleh negatif.");
     if (draft.email && !/^\S+@\S+\.\S+$/.test(draft.email)) return setError("Format email tidak valid.");
     setError("");
-    setProfile({ ...draft, name: draft.name.trim() || "Pengguna" });
+    try {
+      await setProfile({ ...draft, name: draft.name.trim() || "Pengguna" }, { immediate: true });
+    } catch {
+      return setError("Gagal menyimpan ke server.");
+    }
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2500);
+  }
+
+  function liveWealthGoal(v: number) {
+    setDraft((d) => ({ ...d, wealthGoal: v }));
+    setProfile({ wealthGoal: v });
   }
 
   function addExpense() {
@@ -110,7 +119,7 @@ export default function Profile() {
               <input
                 id="p-goal" type="range" min={10} max={80} step={1}
                 value={draft.wealthGoal}
-                onChange={(e) => setDraft({ ...draft, wealthGoal: Number(e.target.value) })}
+                onChange={(e) => liveWealthGoal(Number(e.target.value))}
                 className="mt-2 w-full accent-primary"
               />
             </div>

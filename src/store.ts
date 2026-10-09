@@ -178,13 +178,14 @@ export async function fetchBackendData() {
 
     set((s) => ({
       ...s,
-      profile: {
-        ...s.profile,
-        name: profileData?.name || s.profile.name,
-        email: profileData?.email || s.profile.email,
-        monthlyIncome: profileData?.monthly_income ?? s.profile.monthlyIncome,
-        wealthGoal: profileData?.wealth_goal ?? s.profile.wealthGoal,
-      },
+      profile: profileData ? {
+        name: profileData.name || s.profile.name,
+        email: profileData.email || "",
+        currency: ["IDR","USD","EUR"].includes(profileData.currency) ? profileData.currency : s.profile.currency,
+        monthlyIncome: Number(profileData.monthly_income ?? s.profile.monthlyIncome),
+        wealthGoal: Number(profileData.wealth_goal ?? s.profile.wealthGoal),
+        startBalance: Number(profileData.start_balance ?? s.profile.startBalance),
+      } : s.profile,
       txs: txs.map((t: any) => ({
         id: t.id,
         type: t.amount >= 0 ? "expense" : "expense", // mapped accordingly
@@ -345,8 +346,43 @@ export async function deleteFixed(id: string) {
   set((s) => ({ ...s, fixed: s.fixed.filter((f) => f.id !== id) }));
 }
 
-export async function setProfile(p: Partial<Profile>) {
+let profileTimer: ReturnType<typeof setTimeout> | null = null;
+let profilePending: Partial<Profile> | null = null;
+
+export async function setProfile(p: Partial<Profile>, opts: { immediate?: boolean } = {}) {
   set((s) => ({ ...s, profile: { ...s.profile, ...p } }));
+  profilePending = { ...(profilePending || {}), ...p };
+  const persist = async () => {
+    const body = profilePending; profilePending = null; profileTimer = null;
+    if (!body) return;
+    try {
+      const res = await apiCall("/api/profile", "PUT", {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.email !== undefined ? { email: body.email } : {}),
+        ...(body.currency !== undefined ? { currency: body.currency } : {}),
+        ...(body.monthlyIncome !== undefined ? { monthly_income: body.monthlyIncome } : {}),
+        ...(body.wealthGoal !== undefined ? { wealth_goal: body.wealthGoal } : {}),
+        ...(body.startBalance !== undefined ? { start_balance: body.startBalance } : {}),
+      });
+      set((s) => ({
+        ...s,
+        profile: {
+          name: res.name ?? s.profile.name,
+          email: res.email ?? s.profile.email,
+          currency: ["IDR","USD","EUR"].includes(res.currency) ? res.currency : s.profile.currency,
+          monthlyIncome: Number(res.monthly_income ?? s.profile.monthlyIncome),
+          wealthGoal: Number(res.wealth_goal ?? s.profile.wealthGoal),
+          startBalance: Number(res.start_balance ?? s.profile.startBalance),
+        },
+      }));
+    } catch (e) { console.error("setProfile persist failed:", e); if (opts.immediate) throw e; }
+  };
+  if (opts.immediate) {
+    if (profileTimer) clearTimeout(profileTimer);
+    await persist();
+  } else if (!profileTimer) {
+    profileTimer = setTimeout(persist, 400);
+  }
 }
 
 export async function addTask(t: Omit<Task, "id" | "done">) {
