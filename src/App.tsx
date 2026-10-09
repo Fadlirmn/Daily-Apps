@@ -30,6 +30,8 @@ export default function App() {
 
   function handleLogout() {
     localStorage.removeItem("arunika_auth");
+    localStorage.removeItem("arunika_token");
+    localStorage.removeItem("arunika:v1");
     setAuthed(false);
   }
 

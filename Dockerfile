@@ -1,27 +1,35 @@
-# ---- Builder: install deps + build Vite ----
 FROM node:22-alpine AS builder
 
 WORKDIR /app
-
-# Aktifkan pnpm sesuai mise.toml (pnpm 10.34.3)
 RUN corepack enable && corepack prepare pnpm@10.34.3 --activate
 
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-# vite.config.ts mengimpor ./.figma/make/site.json yang hanya tersedia di
-# environment Figma Make. Untuk build standalone (Docker/clone),
-# sediakan fallback dari make/site.json bila file tersebut belum ada.
 RUN if [ ! -f .figma/make/site.json ]; then mkdir -p .figma/make && cp make/site.json .figma/make/site.json; fi
 RUN pnpm build
 
-# ---- Runner: serve dist via nginx (SPA fallback) ----
-FROM nginx:alpine AS runner
+FROM node:22-alpine AS runner
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.34.3 --activate
+RUN apk add --no-cache nginx
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/nginx.conf
+
+WORKDIR /app/api
+COPY api/package.json api/pnpm-lock.yaml* ./
+RUN pnpm install --prod --no-frozen-lockfile
+
+WORKDIR /app/api
+COPY api/server.js ./
+
+WORKDIR /app
+COPY make-sure-services.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/make-sure-services.sh
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/usr/local/bin/make-sure-services.sh"]

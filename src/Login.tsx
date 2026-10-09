@@ -6,14 +6,24 @@ export function Login({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  function handleLogin(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    // Validasi sesuai instruksi: default sumbul / haniftampan123 atau cek tabel users
-    if (email.trim() === "sumbul" && password === "haniftampan123") {
+    setError("");
+    try {
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Login gagal");
+      }
+      localStorage.setItem("arunika_token", data.token);
       localStorage.setItem("arunika_auth", "true");
       onLogin();
-    } else {
-      setError("Email atau password salah. (Gunakan sumbul / haniftampan123)");
+    } catch (err: any) {
+      setError(err.message || "Email atau password salah.");
     }
   }
 

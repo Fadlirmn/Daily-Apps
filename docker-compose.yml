@@ -32,6 +32,7 @@ services:
       - POSTGRES_DB=fintrack
       - POSTGRES_USER=fintrack
       - POSTGRES_PASSWORD=fintrack_secret
+      - JWT_SECRET=supersecretkeychangeit
     networks:
       - daily-net
 

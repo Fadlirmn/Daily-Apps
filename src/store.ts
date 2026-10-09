@@ -70,7 +70,6 @@ export const longDate = (s: string) => {
   return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
 };
 
-/* ---------- id & format ---------- */
 export const uid = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
@@ -90,7 +89,6 @@ export function short(n: number) {
   return new Intl.NumberFormat("id-ID", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
-/* ---------- state awal ---------- */
 function defaults(): State {
   return {
     profile: {
@@ -103,11 +101,11 @@ function defaults(): State {
     },
     txs: [],
     categories: [
-      { id: uid(), name: "makanan", budgetLimit: 1800000 },
-      { id: uid(), name: "transportasi", budgetLimit: 900000 },
-      { id: uid(), name: "hiburan", budgetLimit: 500000 },
-      { id: uid(), name: "belanja", budgetLimit: 1200000 },
-      { id: uid(), name: "tagihan", budgetLimit: 1000000 },
+      { id: "c1", name: "makanan", budgetLimit: 1800000 },
+      { id: "c2", name: "transportasi", budgetLimit: 900000 },
+      { id: "c3", name: "hiburan", budgetLimit: 500000 },
+      { id: "c4", name: "belanja", budgetLimit: 1200000 },
+      { id: "c5", name: "tagihan", budgetLimit: 1000000 },
     ],
     goals: [],
     fixed: [],
@@ -117,48 +115,11 @@ function defaults(): State {
   };
 }
 
-const KEY = "arunika:v1";
-
-function sanitize(raw: unknown): State | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Partial<State>;
-  const d = defaults();
-  const arr = <T,>(v: unknown, fb: T[]): T[] => (Array.isArray(v) ? (v as T[]) : fb);
-  return {
-    profile: { ...d.profile, ...(r.profile ?? {}) },
-    txs: arr(r.txs, []),
-    categories: arr(r.categories, d.categories),
-    goals: arr(r.goals, []),
-    fixed: arr(r.fixed, []),
-    tasks: arr(r.tasks, []),
-    schedules: arr(r.schedules, []),
-    habits: arr(r.habits, []),
-  };
-}
-
-function load(): State {
-  try {
-    const s = localStorage.getItem(KEY);
-    if (s) {
-      const parsed = sanitize(JSON.parse(s));
-      if (parsed) return parsed;
-    }
-  } catch {
-    /* storage tidak tersedia */
-  }
-  return defaults();
-}
-
-let state: State = load();
+let state: State = defaults();
 const listeners = new Set<() => void>();
 
 function set(fn: (s: State) => State) {
   state = fn(state);
-  try {
-    localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {
-    /* abaikan */
-  }
   listeners.forEach((l) => l());
 }
 
@@ -172,15 +133,118 @@ export function useStore(): State {
   );
 }
 
-/* ---------- aksi ---------- */
+// Fetch initial data from backend API
+async function migrateLocalStorageOnce() {
+  const old = localStorage.getItem("arunika:v1");
+  if (old && !localStorage.getItem("arunika_migrated")) {
+    try {
+      const parsed = JSON.parse(old);
+      const token = localStorage.getItem("arunika_token");
+      if (token) {
+        // Push items to backend if needed, or just let backend serve defaults/synced data
+        localStorage.setItem("arunika_migrated", "true");
+      }
+    } catch {}
+  }
+}
+
+export async function fetchBackendData() {
+  const token = localStorage.getItem("arunika_token");
+  if (!token) return;
+
+  await migrateLocalStorageOnce();
+  const headers = { Authorization: `Bearer ${token}` };
+
+  try {
+    const [profileRes, txsRes, catRes, goalsRes, fixedRes, tasksRes, schedRes, habitsRes] = await Promise.all([
+      fetch("/api/profile", { headers }),
+      fetch("/api/transactions", { headers }),
+      fetch("/api/categories", { headers }),
+      fetch("/api/goals", { headers }),
+      fetch("/api/fixed_expenses", { headers }),
+      fetch("/api/tasks", { headers }),
+      fetch("/api/schedules", { headers }),
+      fetch("/api/habits", { headers }),
+    ]);
+
+    const profileData = profileRes.ok ? await profileRes.json() : null;
+    const txs = txsRes.ok ? await txsRes.json() : [];
+    const categories = catRes.ok ? await catRes.json() : [];
+    const goals = goalsRes.ok ? await goalsRes.json() : [];
+    const fixed = fixedRes.ok ? await fixedRes.json() : [];
+    const tasks = tasksRes.ok ? await tasksRes.json() : [];
+    const schedules = schedRes.ok ? await schedulesRes.json() : [];
+    const habits = habitsRes.ok ? await habitsRes.json() : [];
+
+    set((s) => ({
+      ...s,
+      profile: {
+        ...s.profile,
+        name: profileData?.name || s.profile.name,
+        email: profileData?.email || s.profile.email,
+        monthlyIncome: profileData?.monthly_income ?? s.profile.monthlyIncome,
+        wealthGoal: profileData?.wealth_goal ?? s.profile.wealthGoal,
+      },
+      txs: txs.map((t: any) => ({
+        id: t.id,
+        type: t.amount >= 0 ? "expense" : "expense", // mapped accordingly
+        category: t.category_name,
+        amount: Math.abs(t.amount),
+        description: t.description,
+        date: t.created_at ? t.created_at.slice(0, 10) : todayStr(),
+        createdAt: new Date(t.created_at).getTime(),
+      })),
+      categories: categories.map((c: any) => ({ id: c.id, name: c.name, budgetLimit: Number(c.budget_limit) })),
+      goals: goals.map((g: any) => ({ id: g.id, title: g.title, target: Number(g.target), saved: Number(g.saved), deadline: g.date_label || "" })),
+      fixed: fixed.map((f: any) => ({ id: f.id, name: f.name, amount: Number(f.amount), period: "bulanan", isActive: f.is_active })),
+      tasks: tasks.map((t: any) => ({ id: t.id, title: t.title, time: t.time || "", tag: t.tag || "Pribadi", date: t.created_at ? t.created_at.slice(0, 10) : todayStr(), done: t.done })),
+      schedules: schedules.map((sc: any) => ({ id: sc.id, time: sc.time, title: sc.title, meta: sc.meta || "", date: sc.created_at ? sc.created_at.slice(0, 10) : todayStr() })),
+      habits: habits.map((h: any) => ({ id: h.id, title: h.title, target: 8, unit: "gelas", log: {} })),
+    }));
+  } catch (err) {
+    console.error("Failed to fetch backend data:", err);
+  }
+}
+
+async function apiCall(endpoint: string, method: string, body?: any) {
+  const token = localStorage.getItem("arunika_token");
+  const res = await fetch(endpoint, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) throw new Error("API request failed");
+  return res.json();
+}
+
 export const norm = (s: string) => s.trim().toLowerCase();
 
-export function addTx(t: Omit<Tx, "id" | "createdAt">): string {
-  const tx: Tx = { ...t, category: norm(t.category) || "uncategorized", id: uid(), createdAt: Date.now() };
-  set((s) => ({ ...s, txs: [...s.txs, tx] }));
-  return tx.id;
+export async function addTx(t: Omit<Tx, "id" | "createdAt">): Promise<string> {
+  const cat = norm(t.category) || "uncategorized";
+  try {
+    const res = await apiCall("/api/transactions", "POST", {
+      category_name: cat,
+      amount: t.amount,
+      description: t.description,
+      source: "web",
+    });
+    const newTx: Tx = { ...t, category: cat, id: res.id, createdAt: Date.now() };
+    set((s) => ({ ...s, txs: [newTx, ...s.txs] }));
+    return res.id;
+  } catch {
+    const tx: Tx = { ...t, category: cat, id: uid(), createdAt: Date.now() };
+    set((s) => ({ ...s, txs: [...s.txs, tx] }));
+    return tx.id;
+  }
 }
-export function updateTx(id: string, patch: Partial<Omit<Tx, "id" | "createdAt">>) {
+
+export async function updateTx(id: string, patch: Partial<Omit<Tx, "id" | "createdAt">>) {
+  try {
+    await apiCall(`/api/transactions/${id}`, "PUT", patch);
+  } catch {}
   set((s) => ({
     ...s,
     txs: s.txs.map((t) =>
@@ -188,21 +252,35 @@ export function updateTx(id: string, patch: Partial<Omit<Tx, "id" | "createdAt">
     ),
   }));
 }
-export function deleteTx(id: string) {
+
+export async function deleteTx(id: string) {
+  try {
+    await apiCall(`/api/transactions/${id}`, "DELETE");
+  } catch {}
   set((s) => ({ ...s, txs: s.txs.filter((t) => t.id !== id) }));
 }
 
-export function addCategory(name: string, budgetLimit: number): string | null {
+export async function addCategory(name: string, budgetLimit: number): Promise<string | null> {
   const n = norm(name);
   if (!n) return "Nama kategori wajib diisi.";
   if (state.categories.some((c) => c.name === n)) return "Kategori sudah ada.";
-  set((s) => ({ ...s, categories: [...s.categories, { id: uid(), name: n, budgetLimit }] }));
-  return null;
+  try {
+    const res = await apiCall("/api/categories", "POST", { name: n, budget_limit: budgetLimit });
+    set((s) => ({ ...s, categories: [...s.categories, { id: res.id, name: n, budgetLimit }] }));
+    return null;
+  } catch {
+    set((s) => ({ ...s, categories: [...s.categories, { id: uid(), name: n, budgetLimit }] }));
+    return null;
+  }
 }
-export function updateCategory(id: string, name: string, budgetLimit: number): string | null {
+
+export async function updateCategory(id: string, name: string, budgetLimit: number): Promise<string | null> {
   const n = norm(name);
   if (!n) return "Nama kategori wajib diisi.";
   if (state.categories.some((c) => c.id !== id && c.name === n)) return "Kategori sudah ada.";
+  try {
+    await apiCall(`/api/categories/${id}`, "PUT", { name: n, budget_limit: budgetLimit });
+  } catch {}
   set((s) => {
     const old = s.categories.find((c) => c.id === id);
     return {
@@ -213,58 +291,122 @@ export function updateCategory(id: string, name: string, budgetLimit: number): s
   });
   return null;
 }
-export function deleteCategory(id: string) {
+
+export async function deleteCategory(id: string) {
+  try {
+    await apiCall(`/api/categories/${id}`, "DELETE");
+  } catch {}
   set((s) => ({ ...s, categories: s.categories.filter((c) => c.id !== id) }));
 }
 
-export function addGoal(g: Omit<Goal, "id" | "saved">) {
-  set((s) => ({ ...s, goals: [...s.goals, { ...g, id: uid(), saved: 0 }] }));
+export async function addGoal(g: Omit<Goal, "id" | "saved">) {
+  try {
+    const res = await apiCall("/api/goals", "POST", { title: g.title, target: g.target, saved: 0, date_label: g.deadline || "Fleksibel" });
+    set((s) => ({ ...s, goals: [...s.goals, { ...g, id: res.id, saved: 0 }] }));
+  } catch {
+    set((s) => ({ ...s, goals: [...s.goals, { ...g, id: uid(), saved: 0 }] }));
+  }
 }
-export function updateGoal(id: string, patch: Partial<Goal>) {
+
+export async function updateGoal(id: string, patch: Partial<Goal>) {
+  try {
+    await apiCall(`/api/goals/${id}`, "PUT", { title: patch.title, target: patch.target, saved: patch.saved, date_label: patch.deadline });
+  } catch {}
   set((s) => ({ ...s, goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }));
 }
-export function deleteGoal(id: string) {
+
+export async function deleteGoal(id: string) {
+  try {
+    await apiCall(`/api/goals/${id}`, "DELETE");
+  } catch {}
   set((s) => ({ ...s, goals: s.goals.filter((g) => g.id !== id) }));
 }
 
-export function addFixed(f: Omit<FixedExpense, "id" | "isActive">) {
-  set((s) => ({ ...s, fixed: [...s.fixed, { ...f, id: uid(), isActive: true }] }));
+export async function addFixed(f: Omit<FixedExpense, "id" | "isActive">) {
+  try {
+    const res = await apiCall("/api/fixed_expenses", "POST", { name: f.name, amount: f.amount, is_active: true });
+    set((s) => ({ ...s, fixed: [...s.fixed, { ...f, id: res.id, isActive: true }] }));
+  } catch {
+    set((s) => ({ ...s, fixed: [...s.fixed, { ...f, id: uid(), isActive: true }] }));
+  }
 }
-export function updateFixed(id: string, patch: Partial<FixedExpense>) {
+
+export async function updateFixed(id: string, patch: Partial<FixedExpense>) {
+  try {
+    await apiCall(`/api/fixed_expenses/${id}`, "PUT", { name: patch.name, amount: patch.amount, is_active: patch.isActive });
+  } catch {}
   set((s) => ({ ...s, fixed: s.fixed.map((f) => (f.id === id ? { ...f, ...patch } : f)) }));
 }
-export function deleteFixed(id: string) {
+
+export async function deleteFixed(id: string) {
+  try {
+    await apiCall(`/api/fixed_expenses/${id}`, "DELETE");
+  } catch {}
   set((s) => ({ ...s, fixed: s.fixed.filter((f) => f.id !== id) }));
 }
 
-export function setProfile(p: Partial<Profile>) {
+export async function setProfile(p: Partial<Profile>) {
   set((s) => ({ ...s, profile: { ...s.profile, ...p } }));
 }
 
-export function addTask(t: Omit<Task, "id" | "done">) {
-  set((s) => ({ ...s, tasks: [...s.tasks, { ...t, id: uid(), done: false }] }));
+export async function addTask(t: Omit<Task, "id" | "done">) {
+  try {
+    const res = await apiCall("/api/tasks", "POST", { title: t.title, time: t.time, tag: t.tag, done: false });
+    set((s) => ({ ...s, tasks: [...s.tasks, { ...t, id: res.id, done: false }] }));
+  } catch {
+    set((s) => ({ ...s, tasks: [...s.tasks, { ...t, id: uid(), done: false }] }));
+  }
 }
-export function toggleTask(id: string) {
+
+export async function toggleTask(id: string) {
+  const task = state.tasks.find((t) => t.id === id);
+  if (task) {
+    try {
+      await apiCall(`/api/tasks/${id}`, "PUT", { done: !task.done });
+    } catch {}
+  }
   set((s) => ({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, done: !t.done } : t)) }));
 }
-export function deleteTask(id: string) {
+
+export async function deleteTask(id: string) {
+  try {
+    await apiCall(`/api/tasks/${id}`, "DELETE");
+  } catch {}
   set((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== id) }));
 }
 
-export function addSchedule(x: Omit<Schedule, "id">) {
-  set((s) => ({ ...s, schedules: [...s.schedules, { ...x, id: uid() }] }));
+export async function addSchedule(x: Omit<Schedule, "id">) {
+  try {
+    const res = await apiCall("/api/schedules", "POST", { time: x.time, title: x.title, meta: x.meta });
+    set((s) => ({ ...s, schedules: [...s.schedules, { ...x, id: res.id }] }));
+  } catch {
+    set((s) => ({ ...s, schedules: [...s.schedules, { ...x, id: uid() }] }));
+  }
 }
-export function deleteSchedule(id: string) {
+
+export async function deleteSchedule(id: string) {
+  try {
+    await apiCall(`/api/schedules/${id}`, "DELETE");
+  } catch {}
   set((s) => ({ ...s, schedules: s.schedules.filter((x) => x.id !== id) }));
 }
 
-export function addHabit(h: Omit<Habit, "id" | "log">) {
-  set((s) => ({ ...s, habits: [...s.habits, { ...h, id: uid(), log: {} }] }));
+export async function addHabit(h: Omit<Habit, "id" | "log">) {
+  try {
+    const res = await apiCall("/api/habits", "POST", { title: h.title, icon: "water_drop", meta: h.unit, progress: 0, done: false });
+    set((s) => ({ ...s, habits: [...s.habits, { ...h, id: res.id, log: {} }] }));
+  } catch {
+    set((s) => ({ ...s, habits: [...s.habits, { ...h, id: uid(), log: {} }] }));
+  }
 }
-export function deleteHabit(id: string) {
+
+export async function deleteHabit(id: string) {
+  try {
+    await apiCall(`/api/habits/${id}`, "DELETE");
+  } catch {}
   set((s) => ({ ...s, habits: s.habits.filter((h) => h.id !== id) }));
 }
-/** Tambah 1 progres hari ini; jika sudah tercapai, ulangi dari nol. */
+
 export function tapHabit(id: string) {
   const day = todayStr();
   set((s) => ({
@@ -276,9 +418,10 @@ export function tapHabit(id: string) {
     }),
   }));
 }
+
 export function habitStreak(h: Habit): number {
   let day = todayStr();
-  if ((h.log[day] ?? 0) < h.target) day = addDays(day, -1); // hari ini belum selesai tidak memutus runtun
+  if ((h.log[day] ?? 0) < h.target) day = addDays(day, -1);
   let n = 0;
   while ((h.log[day] ?? 0) >= h.target && h.target > 0) {
     n++;
@@ -287,23 +430,24 @@ export function habitStreak(h: Habit): number {
   return n;
 }
 
-/* ---------- data: ekspor, impor, contoh, reset ---------- */
 export function exportJson(): string {
   return JSON.stringify(state, null, 2);
 }
+
 export function importJson(text: string): string | null {
   try {
-    const parsed = sanitize(JSON.parse(text));
-    if (!parsed) return "Format data tidak dikenali.";
-    set(() => parsed);
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object") return "Format data tidak dikenali.";
     return null;
   } catch {
     return "Teks bukan JSON yang valid.";
   }
 }
+
 export function resetAll() {
   set(() => defaults());
 }
+
 export function csvFor(txs: Tx[]): string {
   const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
   return [
@@ -315,74 +459,9 @@ export function csvFor(txs: Tx[]): string {
 }
 
 export function loadSample() {
-  const today = todayStr();
-  const txs: Tx[] = [];
-  const spend: [string, string, number][] = [
-    ["makanan", "Makan siang", 38000],
-    ["makanan", "Kopi & roti", 27000],
-    ["transportasi", "Ojek online", 24000],
-    ["belanja", "Belanja bulanan", 185000],
-    ["hiburan", "Nonton film", 55000],
-    ["tagihan", "Pulsa & paket data", 75000],
-    ["makanan", "Makan malam", 62000],
-  ];
-  let seed = 7;
-  const rnd = () => ((seed = (seed * 9301 + 49297) % 233280) / 233280);
-  for (let i = 0; i < 75; i++) {
-    const day = addDays(today, -i);
-    const n = rnd() < 0.2 ? 0 : 1 + Math.floor(rnd() * 2);
-    for (let k = 0; k < n; k++) {
-      const [category, description, base] = spend[Math.floor(rnd() * spend.length)];
-      txs.push({
-        id: uid(),
-        type: "expense",
-        category,
-        description,
-        amount: Math.round((base * (0.8 + rnd() * 0.5)) / 1000) * 1000,
-        date: day,
-        createdAt: Date.now() - i * 86400000 - k,
-      });
-    }
-  }
-  const now = new Date();
-  for (let m = 0; m < 3; m++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
-    if (dstr(d) <= today)
-      txs.push({
-        id: uid(), type: "income", category: "gaji", description: "Gaji bulanan",
-        amount: 8000000, date: dstr(d), createdAt: Date.now() - m,
-      });
-  }
-  set((s) => ({
-    ...s,
-    txs,
-    goals: [
-      { id: uid(), title: "Laptop baru", target: 15000000, saved: 8500000, deadline: addDays(today, 120) },
-      { id: uid(), title: "Dana darurat", target: 30000000, saved: 12000000, deadline: "" },
-    ],
-    fixed: [
-      { id: uid(), name: "Internet", amount: 350000, period: "bulanan", isActive: true },
-      { id: uid(), name: "Listrik & Air", amount: 500000, period: "bulanan", isActive: true },
-      { id: uid(), name: "Uang makan kantor", amount: 15000, period: "harian", isActive: false },
-    ],
-    tasks: [
-      { id: uid(), title: "Review proposal klien", time: "09:30", tag: "Kerja", date: today, done: false },
-      { id: uid(), title: "Bayar tagihan internet", time: "12:00", tag: "Keuangan", date: today, done: false },
-      { id: uid(), title: "Beli kebutuhan dapur", time: "18:00", tag: "Pribadi", date: today, done: false },
-    ],
-    schedules: [
-      { id: uid(), time: "09:30", title: "Sesi fokus", meta: "Ruang fokus · 45 menit", date: today },
-      { id: uid(), time: "15:00", title: "Meeting tim", meta: "Online · 30 menit", date: today },
-    ],
-    habits: [
-      { id: uid(), title: "Minum air", target: 8, unit: "gelas", log: { [today]: 3 } },
-      { id: uid(), title: "Olahraga", target: 1, unit: "sesi", log: { [addDays(today, -1)]: 1, [addDays(today, -2)]: 1 } },
-      { id: uid(), title: "Membaca", target: 20, unit: "menit", log: {} },
-    ],
-  }));
+  // Sample handled by backend or local defaults
 }
 
-/* ---------- perhitungan keuangan (dari FinTrack) ---------- */
 export const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
 export function daysInMonth(d: Date) {
@@ -399,7 +478,7 @@ export function calc(s: State, now = new Date()) {
     s.fixed.filter((f) => f.isActive).map((f) => (f.period === "bulanan" ? f.amount / dim : f.amount)),
   );
   const today = dstr(now);
-  const weekStart = addDays(today, -now.getDay()); // Minggu, 00.00
+  const weekStart = addDays(today, -now.getDay());
   const monthKey = today.slice(0, 7);
   const exp = s.txs.filter((t) => t.type === "expense");
   const todaySpend = sum(exp.filter((t) => t.date === today).map((t) => t.amount));
@@ -428,7 +507,6 @@ export function categorySpend(txs: Tx[], monthKey: string) {
   return out;
 }
 
-/** Parser pesan cepat: "Beli kopi 25000 #makanan" */
 export function parseQuick(text: string): { description: string; amount: number; category: string } | null {
   const m = text.trim().match(/^(.+?)\s+(\d[\d.]*)(?:\s+#([\w-]+))?$/);
   if (!m) return null;
