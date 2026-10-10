@@ -1,0 +1,20 @@
+{
+  "name": "Arunika — Aktivitas & Keuangan",
+  "short_name": "Arunika",
+  "description": "Kelola tugas harian dan keuangan pribadi dalam satu tempat.",
+  "start_url": "/?tab=today",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "lang": "id",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

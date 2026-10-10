@@ -1,79 +1,102 @@
-import express from 'express';
-import pg from 'pg';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import cors from 'cors';
+import express from "express"
+import pg from "pg"
+import bcrypt from "bcryptjs"
+import jwt from "jsonwebtoken"
+import cors from "cors"
 
 // Fail-fast: tanpa secret eksplisit, server menolak start. Mencegah deploy
 // diam-diam dengan JWT_SECRET/POSTGRES_PASSWORD default yang ter-commit di repo.
-const REQUIRED_ENV = ['JWT_SECRET', 'POSTGRES_PASSWORD'];
-const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+const REQUIRED_ENV = ["JWT_SECRET", "POSTGRES_PASSWORD"]
+const missing = REQUIRED_ENV.filter((k) => !process.env[k])
 if (missing.length) {
-  console.error(`Fatal: environment variable wajib belum di-set: ${missing.join(', ')}`);
-  console.error('Lihat .env.example untuk daftar variabel yang dibutuhkan.');
-  process.exit(1);
+  console.error(
+    `Fatal: environment variable wajib belum di-set: ${missing.join(", ")}`,
+  )
+  console.error("Lihat .env.example untuk daftar variabel yang dibutuhkan.")
+  process.exit(1)
 }
 
-const { Pool } = pg;
+const { Pool } = pg
 const pool = new Pool({
-  host: process.env.POSTGRES_HOST || 'postgres',
+  host: process.env.POSTGRES_HOST || "postgres",
   port: process.env.POSTGRES_PORT || 5432,
-  database: process.env.POSTGRES_DB || 'fintrack',
-  user: process.env.POSTGRES_USER || 'fintrack',
+  database: process.env.POSTGRES_DB || "fintrack",
+  user: process.env.POSTGRES_USER || "fintrack",
   password: process.env.POSTGRES_PASSWORD,
-});
+})
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
-const app = express();
-app.use(cors(ALLOWED_ORIGINS.length ? { origin: ALLOWED_ORIGINS } : {}));
-app.use(express.json());
+const JWT_SECRET = process.env.JWT_SECRET
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean)
+const app = express()
+app.use(cors(ALLOWED_ORIGINS.length ? { origin: ALLOWED_ORIGINS } : {}))
+app.use(express.json())
 
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Access token required' });
+  const authHeader = req.headers["authorization"]
+  const token = authHeader && authHeader.split(" ")[1]
+  if (!token) return res.status(401).json({ error: "Access token required" })
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid or expired token' });
-    req.user = user;
-    next();
-  });
-};
+    if (err) return res.status(403).json({ error: "Invalid or expired token" })
+    req.user = user
+    next()
+  })
+}
 
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+app.post("/api/login", async (req, res) => {
+  const { email, password } = req.body
+  if (!email || !password)
+    return res.status(400).json({ error: "Email and password required" })
 
   try {
-    const result = await pool.query('SELECT id, email, password_hash FROM users WHERE email = $1', [email]);
-    if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
+    const result = await pool.query(
+      "SELECT id, email, password_hash FROM users WHERE email = $1",
+      [email],
+    )
+    if (result.rows.length === 0)
+      return res.status(401).json({ error: "Invalid credentials" })
 
-    const user = result.rows[0];
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+    const user = result.rows[0]
+    const valid = await bcrypt.compare(password, user.password_hash)
+    if (!valid) return res.status(401).json({ error: "Invalid credentials" })
 
-    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, email: user.email } });
+    const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
+      expiresIn: "7d",
+    })
+    res.json({ token, user: { id: user.id, email: user.email } })
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Login error:", err)
+    res.status(500).json({ error: "Internal server error" })
   }
-});
+})
 
-app.get('/api/profile', authenticateToken, async (req, res) => {
+app.get("/api/profile", authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, email, name, monthly_income, wealth_goal, currency, start_balance, created_at FROM users WHERE id = $1', [req.user.userId]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json(result.rows[0]);
+    const result = await pool.query(
+      "SELECT id, email, name, monthly_income, wealth_goal, currency, start_balance, created_at FROM users WHERE id = $1",
+      [req.user.userId],
+    )
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: "User not found" })
+    res.json(result.rows[0])
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-app.put('/api/profile', authenticateToken, async (req, res) => {
+app.put("/api/profile", authenticateToken, async (req, res) => {
   try {
-    const { name, email, monthly_income, wealth_goal, currency, start_balance } = req.body;
+    const {
+      name,
+      email,
+      monthly_income,
+      wealth_goal,
+      currency,
+      start_balance,
+    } = req.body
     const result = await pool.query(
       `UPDATE users SET 
         name = COALESCE($1, name),
@@ -83,115 +106,151 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
         currency = COALESCE($5, currency),
         start_balance = COALESCE($6, start_balance)
        WHERE id = $7 RETURNING id, email, name, monthly_income, wealth_goal, currency, start_balance`,
-      [name, email, monthly_income, wealth_goal, currency, start_balance, req.user.userId]
-    );
-    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    res.json(result.rows[0]);
+      [
+        name,
+        email,
+        monthly_income,
+        wealth_goal,
+        currency,
+        start_balance,
+        req.user.userId,
+      ],
+    )
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: "User not found" })
+    res.json(result.rows[0])
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    if (err && err.code === "23505")
+      return res.status(409).json({ error: "Email sudah dipakai akun lain." })
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
-app.put('/api/password', authenticateToken, async (req, res) => {
-  const { oldPassword, newPassword } = req.body;
-  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'Password lama dan baru wajib diisi' });
-  if (newPassword.length < 6) return res.status(400).json({ error: 'Password baru minimal 6 karakter' });
+app.put("/api/password", authenticateToken, async (req, res) => {
+  const { oldPassword, newPassword } = req.body
+  if (!oldPassword || !newPassword)
+    return res.status(400).json({ error: "Password lama dan baru wajib diisi" })
+  if (newPassword.length < 6)
+    return res.status(400).json({ error: "Password baru minimal 6 karakter" })
   try {
-    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.userId]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
-    const valid = await bcrypt.compare(oldPassword, result.rows[0].password_hash);
-    if (!valid) return res.status(401).json({ error: 'Password lama salah' });
-    const hash = await bcrypt.hash(newPassword, 10);
-    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, req.user.userId]);
-    res.json({ success: true, message: 'Password berhasil diganti' });
+    const result = await pool.query(
+      "SELECT password_hash FROM users WHERE id = $1",
+      [req.user.userId],
+    )
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: "User not found" })
+    const valid = await bcrypt.compare(
+      oldPassword,
+      result.rows[0].password_hash,
+    )
+    if (!valid) return res.status(401).json({ error: "Password lama salah" })
+    const hash = await bcrypt.hash(newPassword, 10)
+    await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [
+      hash,
+      req.user.userId,
+    ])
+    res.json({ success: true, message: "Password berhasil diganti" })
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message })
   }
-});
+})
 
 // Whitelist eksplisit kolom yang boleh ditulis per resource lewat generic CRUD.
 // Mencegah request body mengontrol nama kolom/identifier SQL (SQL injection via
 // identifier) — sebelumnya `Object.keys(req.body)` di-interpolasi langsung ke
 // query string tanpa validasi.
 const RESOURCE_COLUMNS = {
-  transactions: ['type', 'category_name', 'amount', 'description', 'source'],
-  categories: ['name', 'budget_limit'],
-  fixed_expenses: ['name', 'amount', 'is_active'],
+  transactions: ["type", "category_name", "amount", "description", "source"],
+  categories: ["name", "budget_limit"],
+  fixed_expenses: ["name", "amount", "period", "is_active"],
   budgets: [],
-  goals: ['title', 'target', 'saved', 'date_label'],
-  tasks: ['title', 'time', 'tag', 'done'],
-  habits: ['title', 'icon', 'meta', 'progress', 'done'],
-  schedules: ['time', 'title', 'meta'],
-};
-const resources = Object.keys(RESOURCE_COLUMNS);
+  goals: ["title", "target", "saved", "date_label"],
+  tasks: ["title", "time", "tag", "done"],
+  habits: ["title", "icon", "meta", "progress", "done", "log"],
+  schedules: ["time", "title", "meta"],
+}
+const resources = Object.keys(RESOURCE_COLUMNS)
 
-resources.forEach(resource => {
-  const allowedColumns = new Set(RESOURCE_COLUMNS[resource]);
+resources.forEach((resource) => {
+  const allowedColumns = new Set(RESOURCE_COLUMNS[resource])
 
   app.get(`/api/${resource}`, authenticateToken, async (req, res) => {
     try {
-      const result = await pool.query(`SELECT * FROM ${resource} WHERE user_id = $1`, [req.user.userId]);
-      res.json(result.rows);
+      const result = await pool.query(
+        `SELECT * FROM ${resource} WHERE user_id = $1`,
+        [req.user.userId],
+      )
+      res.json(result.rows)
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err.message })
     }
-  });
+  })
 
   app.post(`/api/${resource}`, authenticateToken, async (req, res) => {
     try {
-      const keys = Object.keys(req.body).filter(k => allowedColumns.has(k));
-      const values = keys.map(k => req.body[k]);
+      const keys = Object.keys(req.body).filter((k) => allowedColumns.has(k))
+      const values = keys.map((k) => req.body[k])
 
       if (keys.length === 0) {
         const result = await pool.query(
           `INSERT INTO ${resource} (user_id) VALUES ($1) RETURNING *`,
-          [req.user.userId]
-        );
-        return res.status(201).json(result.rows[0]);
+          [req.user.userId],
+        )
+        return res.status(201).json(result.rows[0])
       }
 
-      const placeholders = keys.map((_, i) => `$${i + 2}`).join(', ');
-      const columns = keys.join(', ');
+      const placeholders = keys.map((_, i) => `$${i + 2}`).join(", ")
+      const columns = keys.join(", ")
 
-      const query = `INSERT INTO ${resource} (user_id, ${columns}) VALUES ($1, ${placeholders}) RETURNING *`;
-      const result = await pool.query(query, [req.user.userId, ...values]);
-      res.status(201).json(result.rows[0]);
+      const query = `INSERT INTO ${resource} (user_id, ${columns}) VALUES ($1, ${placeholders}) RETURNING *`
+      const result = await pool.query(query, [req.user.userId, ...values])
+      res.status(201).json(result.rows[0])
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err.message })
     }
-  });
+  })
 
   app.put(`/api/${resource}/:id`, authenticateToken, async (req, res) => {
     try {
-      const { id } = req.params;
-      const keys = Object.keys(req.body).filter(k => allowedColumns.has(k));
-      if (keys.length === 0) return res.status(400).json({ error: 'No valid fields to update' });
+      const { id } = req.params
+      const keys = Object.keys(req.body).filter((k) => allowedColumns.has(k))
+      if (keys.length === 0)
+        return res.status(400).json({ error: "No valid fields to update" })
 
-      const setClause = keys.map((k, i) => `${k} = $${i + 3}`).join(', ');
-      const values = keys.map(k => req.body[k]);
+      const setClause = keys.map((k, i) => `${k} = $${i + 3}`).join(", ")
+      const values = keys.map((k) => req.body[k])
 
-      const query = `UPDATE ${resource} SET ${setClause} WHERE id = $1 AND user_id = $2 RETURNING *`;
-      const result = await pool.query(query, [id, req.user.userId, ...values]);
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Resource not found or unauthorized' });
-      res.json(result.rows[0]);
+      const query = `UPDATE ${resource} SET ${setClause} WHERE id = $1 AND user_id = $2 RETURNING *`
+      const result = await pool.query(query, [id, req.user.userId, ...values])
+      if (result.rows.length === 0)
+        return res
+          .status(404)
+          .json({ error: "Resource not found or unauthorized" })
+      res.json(result.rows[0])
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err.message })
     }
-  });
+  })
 
   app.delete(`/api/${resource}/:id`, authenticateToken, async (req, res) => {
     try {
-      const { id } = req.params;
-      const result = await pool.query(`DELETE FROM ${resource} WHERE id = $1 AND user_id = $2 RETURNING id`, [id, req.user.userId]);
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Resource not found or unauthorized' });
-      res.json({ success: true, id });
+      const { id } = req.params
+      const result = await pool.query(
+        `DELETE FROM ${resource} WHERE id = $1 AND user_id = $2 RETURNING id`,
+        [id, req.user.userId],
+      )
+      if (result.rows.length === 0)
+        return res
+          .status(404)
+          .json({ error: "Resource not found or unauthorized" })
+      res.json({ success: true, id })
     } catch (err) {
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: err.message })
     }
-  });
-});
+  })
+})
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
-  console.log(`API service running on port ${PORT}`);
-});
+  console.log(`API service running on port ${PORT}`)
+})

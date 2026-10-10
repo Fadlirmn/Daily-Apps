@@ -52,6 +52,55 @@
   --text-icon-xs: 1rem;
   --text-icon-sm: 1.25rem;
   --text-icon-lg: 2rem;
+  /* Tinta di atas tombol solid berwarna (tetap gelap di tema gelap, putih di tema terang). */
+  --color-solid-ink: #121212;
+}
+
+/* Tema terang: mirror semua token. Default tetap gelap (tanpa atribut = gelap). */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-background: #f3f0f9;
+  --color-surface: #ffffff;
+  --color-surface-container: #efeaf7;
+  --color-surface-container-high: #e4ddf1;
+  --color-surface-translucent: rgb(70 45 140 / 8%);
+  --color-primary: #5a3fd4;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #ddd2fb;
+  --color-secondary: #575061;
+  --color-tertiary: #0e7a67;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: rgb(14 122 103 / 14%);
+  --color-on-surface: #1d1b20;
+  --color-on-surface-variant: #4d4752;
+  --color-outline: #7a7580;
+  --color-outline-variant: #d3ccd9;
+  --color-income: #1d7a3c;
+  --color-expense: #c02525;
+  --color-warning: #7a5c00;
+  --color-warning-container: rgb(122 92 0 / 12%);
+  --color-nav: rgb(255 255 255 / 94%);
+  --color-inverse-surface: #211f26;
+  --color-inverse-on-surface: #f4f1fa;
+  --color-solid-ink: #ffffff;
+}
+
+html[data-theme="light"] {
+  background: #e4ddf1;
+}
+
+[data-theme="light"] .bg-money-card {
+  background:
+    radial-gradient(circle at 88% 12%, rgb(90 63 212 / 12%), transparent 38%),
+    linear-gradient(145deg, #f5f1ff, #e9e2f7);
+  border: 1px solid rgb(90 63 212 / 18%);
+}
+
+[data-theme="light"] .bg-balance-card {
+  background:
+    radial-gradient(circle at 85% 15%, rgb(14 122 103 / 12%), transparent 40%),
+    linear-gradient(145deg, #eefaf5, #e4f0ec);
+  border: 1px solid rgb(14 122 103 / 18%);
 }
 
 :root {

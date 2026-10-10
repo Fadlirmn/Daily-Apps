@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS fixed_expenses (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   amount NUMERIC NOT NULL DEFAULT 0,
+  period TEXT NOT NULL DEFAULT 'bulanan' CHECK (period IN ('harian', 'bulanan')),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now()
 );
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS habits (
   meta TEXT DEFAULT '',
   progress NUMERIC DEFAULT 1,
   done BOOLEAN DEFAULT false,
+  log JSONB NOT NULL DEFAULT '{}',
   created_at TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_habits_user_id ON habits(user_id);

@@ -1,15 +1,35 @@
-import { createContext, useContext, type ReactNode, type SyntheticEvent } from "react";
-import { useStore } from "./store";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react"
+import { useStore } from "./store"
 
 /** Fungsi pindah tab, disediakan App. */
-export const NavContext = createContext<(id: string) => void>(() => {});
+export const NavContext = createContext<(id: string) => void>(() => {})
 
-export function Icon({ name, filled = false, className = "" }: { name: string; filled?: boolean; className?: string }) {
+export function Icon({
+  name,
+  filled = false,
+  className = "",
+}: {
+  name: string
+  filled?: boolean
+  className?: string
+}) {
   return (
-    <span aria-hidden="true" className={`material-symbols-rounded ${filled ? "icon-filled" : ""} ${className}`}>
+    <span
+      aria-hidden="true"
+      className={`material-symbols-rounded ${
+        filled ? "icon-filled" : ""
+      } ${className}`}
+    >
       {name}
     </span>
-  );
+  )
 }
 
 export function Action({
@@ -18,35 +38,41 @@ export function Action({
   className = "",
   onClick,
 }: {
-  children: ReactNode;
-  label: string;
-  className?: string;
-  onClick?: (e: SyntheticEvent) => void;
+  children: ReactNode
+  label: string
+  className?: string
+  onClick?: (e: SyntheticEvent) => void
 }) {
   return (
-    <div
+    <button
+      type="button"
       aria-label={label}
-      className={`cursor-pointer select-none ${className}`}
+      className={`cursor-pointer select-none [text-align:inherit] ${className}`}
       onClick={onClick}
-      onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && onClick?.(event)}
-      role="button"
-      tabIndex={0}
     >
       {children}
-    </div>
-  );
+    </button>
+  )
 }
 
 export const inputCls =
-  "w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary";
+  "w-full rounded-large border border-outline bg-surface px-4 py-3 text-body text-on-surface outline-none focus:border-primary"
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactNode
+}) {
   return (
     <label className="block">
-      <span className="mb-1 block text-label-sm text-on-surface-variant">{label}</span>
+      <span className="mb-1 block text-label-sm text-on-surface-variant">
+        {label}
+      </span>
       {children}
     </label>
-  );
+  )
 }
 
 export function Segmented({
@@ -54,50 +80,109 @@ export function Segmented({
   value,
   onChange,
 }: {
-  items: (string | [string, string])[];
-  value: string;
-  onChange: (v: string) => void;
+  items: (string | [string, string])[]
+  value: string
+  onChange: (v: string) => void
 }) {
   return (
     <div className="flex rounded-full bg-surface-container p-1">
       {items.map((it) => {
-        const [id, icon] = Array.isArray(it) ? it : [it, ""];
+        const [id, icon] = Array.isArray(it) ? it : [it, ""]
         return (
           <Action
             key={id}
             label={`Buka ${id}`}
             onClick={() => onChange(id)}
             className={`flex flex-1 items-center justify-center gap-2 rounded-full py-3 text-label ${
-              value === id ? "bg-primary-container text-primary" : "text-on-surface-variant"
+              value === id
+                ? "bg-primary-container text-primary"
+                : "text-on-surface-variant"
             }`}
           >
             {icon && <Icon name={icon} className="text-icon-xs" />}
             {id}
           </Action>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
-export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({
+  title,
+  onClose,
+  children,
+}: {
+  title: string
+  onClose: () => void
+  children: ReactNode
+}) {
+  const panelRef = useRef<HTMLElement>(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    const panel = panelRef.current
+    const prev = document.activeElement as HTMLElement | null
+    panel?.focus()
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.stopPropagation()
+        closeRef.current()
+        return
+      }
+      if (e.key !== "Tab" || !panel) return
+      const items = [
+        ...panel.querySelectorAll<HTMLElement>(
+          "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+        ),
+      ].filter((el) => !el.hasAttribute("disabled"))
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener("keydown", onKey)
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      prev?.focus?.()
+    }
+  }, [])
   return (
-    <div className="absolute inset-0 z-50 flex items-end bg-scrim" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      className="absolute inset-0 z-50 flex items-end bg-scrim"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
       <Action label="Tutup" className="absolute inset-0" onClick={onClose}>
         <span />
       </Action>
-      <section className="sheet relative z-10 max-h-[92%] w-full overflow-y-auto rounded-t-sheet bg-surface-container-high p-5 pb-7 lg:mx-auto lg:mb-8 lg:max-w-mobile lg:rounded-sheet">
+      <section
+        ref={panelRef}
+        tabIndex={-1}
+        className="sheet relative z-10 max-h-[92%] w-full overflow-y-auto rounded-t-sheet bg-surface-container-high p-5 pb-7 outline-none lg:mx-auto lg:mb-8 lg:max-w-mobile lg:rounded-sheet"
+      >
         <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-outline" />
         <div className="flex items-center justify-between">
           <p className="text-title text-on-surface">{title}</p>
-          <Action label="Tutup" onClick={onClose} className="grid size-11 place-items-center rounded-full">
+          <Action
+            label="Tutup"
+            onClick={onClose}
+            className="grid size-11 place-items-center rounded-full"
+          >
             <Icon name="close" />
           </Action>
         </div>
         <div className="mt-4 space-y-4">{children}</div>
       </section>
     </div>
-  );
+  )
 }
 
 export function PrimaryButton({
@@ -106,10 +191,10 @@ export function PrimaryButton({
   icon = "check",
   danger = false,
 }: {
-  children: ReactNode;
-  onClick: () => void;
-  icon?: string;
-  danger?: boolean;
+  children: ReactNode
+  onClick: () => void
+  icon?: string
+  danger?: boolean
 }) {
   return (
     <Action
@@ -122,11 +207,17 @@ export function PrimaryButton({
       <Icon name={icon} />
       {children}
     </Action>
-  );
+  )
 }
 
-export function Progress({ pct, tone = "bg-primary" }: { pct: number; tone?: string }) {
-  const v = Math.max(0, Math.min(100, pct));
+export function Progress({
+  pct,
+  tone = "bg-primary",
+}: {
+  pct: number
+  tone?: string
+}) {
+  const v = Math.max(0, Math.min(100, pct))
   return (
     <div
       className="h-2 overflow-hidden rounded-full bg-outline-variant"
@@ -135,9 +226,12 @@ export function Progress({ pct, tone = "bg-primary" }: { pct: number; tone?: str
       aria-valuemin={0}
       aria-valuemax={100}
     >
-      <div className={`h-full rounded-full transition-all ${tone}`} style={{ width: `${v}%` }} />
+      <div
+        className={`h-full rounded-full transition-all ${tone}`}
+        style={{ width: `${v}%` }}
+      />
     </div>
-  );
+  )
 }
 
 export function Empty({ icon, text }: { icon: string; text: string }) {
@@ -146,7 +240,7 @@ export function Empty({ icon, text }: { icon: string; text: string }) {
       <Icon name={icon} className="text-icon-lg" />
       <p className="text-body-sm">{text}</p>
     </div>
-  );
+  )
 }
 
 export function SectionHead({
@@ -156,49 +250,89 @@ export function SectionHead({
   actionText,
   onAction,
 }: {
-  title: string;
-  sub?: string;
-  actionLabel?: string;
-  actionText?: string;
-  onAction?: () => void;
+  title: string
+  sub?: string
+  actionLabel?: string
+  actionText?: string
+  onAction?: () => void
 }) {
   return (
     <div className="mb-3 flex items-center justify-between px-1">
       <div className="min-w-0">
         <p className="text-title text-on-surface">{title}</p>
-        {sub && <p className="mt-1 text-label-sm text-on-surface-variant">{sub}</p>}
+        {sub && (
+          <p className="mt-1 text-label-sm text-on-surface-variant">{sub}</p>
+        )}
       </div>
       {actionLabel && (
-        <Action label={actionLabel} onClick={onAction} className="rounded-full px-3 py-2 text-label text-primary">
+        <Action
+          label={actionLabel}
+          onClick={onAction}
+          className="rounded-full px-3 py-2 text-label text-primary"
+        >
           {actionText ?? "Tambah"}
         </Action>
       )}
     </div>
-  );
+  )
 }
-
 
 /** Foto profil (inisial) dengan nama di bawahnya; membuka halaman Profil. */
 export function ProfileChip({ active = false }: { active?: boolean }) {
-  const go = useContext(NavContext);
-  const { profile } = useStore();
-  const name = profile.name || "?";
-  return (
-    <Action label="Buka profil" onClick={() => go("profile")} className="flex min-w-0 shrink-0 flex-col items-center gap-1">
-      <div className={`grid size-12 place-items-center rounded-full bg-primary-container text-primary ${active ? "ring-2 ring-primary" : ""}`}>
-        <span className="text-title font-semibold">{name.charAt(0).toUpperCase()}</span>
+  const go = useContext(NavContext)
+  const { profile, ready } = useStore()
+  if (!ready) {
+    return (
+      <div
+        className="flex min-w-0 shrink-0 flex-col items-center gap-1"
+        aria-hidden="true"
+      >
+        <div className="size-12 animate-pulse rounded-full bg-surface-container-high" />
+        <div className="h-4 w-10 animate-pulse rounded-full bg-surface-container-high" />
       </div>
-      <span className="max-w-20 truncate text-label-sm text-on-surface">{name}</span>
+    )
+  }
+  // Nama kosong (belum pernah simpan) → pakai nama dari email, terakhir "?".
+  const display =
+    profile.name.trim() || profile.email.split("@")[0].trim() || "?"
+  return (
+    <Action
+      label="Buka profil"
+      onClick={() => go("profile")}
+      className="flex min-w-0 shrink-0 flex-col items-center gap-1"
+    >
+      <div
+        className={`grid size-12 place-items-center rounded-full bg-primary-container text-primary ${
+          active ? "ring-2 ring-primary" : ""
+        }`}
+      >
+        <span className="text-title font-semibold">
+          {display.charAt(0).toUpperCase()}
+        </span>
+      </div>
+      <span className="max-w-20 truncate text-label-sm text-on-surface">
+        {display}
+      </span>
     </Action>
-  );
+  )
 }
 
-export function PageHeader({ title, sub, right }: { title: string; sub?: string; right?: ReactNode }) {
+export function PageHeader({
+  title,
+  sub,
+  right,
+}: {
+  title: string
+  sub?: string
+  right?: ReactNode
+}) {
   return (
     <header className="flex items-center justify-between px-5 pb-4 pt-6">
       <div className="min-w-0">
         <p className="text-headline text-on-surface">{title}</p>
-        {sub && <p className="mt-1 text-body-sm text-on-surface-variant">{sub}</p>}
+        {sub && (
+          <p className="mt-1 text-body-sm text-on-surface-variant">{sub}</p>
+        )}
       </div>
       <div className="flex items-center gap-1">
         {right}
@@ -207,20 +341,36 @@ export function PageHeader({ title, sub, right }: { title: string; sub?: string;
         </div>
       </div>
     </header>
-  );
+  )
 }
 
 /** Navigasi periode (bulan/minggu/tahun) dengan panah. */
-export function Stepper({ label, onPrev, onNext }: { label: string; onPrev: () => void; onNext: () => void }) {
+export function Stepper({
+  label,
+  onPrev,
+  onNext,
+}: {
+  label: string
+  onPrev: () => void
+  onNext: () => void
+}) {
   return (
     <div className="flex items-center justify-between">
-      <Action label="Sebelumnya" onClick={onPrev} className="grid size-11 place-items-center rounded-full text-on-surface">
+      <Action
+        label="Sebelumnya"
+        onClick={onPrev}
+        className="grid size-11 place-items-center rounded-full text-on-surface"
+      >
         <Icon name="chevron_left" />
       </Action>
       <p className="text-title text-on-surface">{label}</p>
-      <Action label="Berikutnya" onClick={onNext} className="grid size-11 place-items-center rounded-full text-on-surface">
+      <Action
+        label="Berikutnya"
+        onClick={onNext}
+        className="grid size-11 place-items-center rounded-full text-on-surface"
+      >
         <Icon name="chevron_right" />
       </Action>
     </div>
-  );
+  )
 }
